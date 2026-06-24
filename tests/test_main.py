@@ -6,7 +6,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-SCRIPT = Path(__file__).resolve().parent.parent / "main.py"
+SCRIPT = Path(__file__).resolve().parent.parent / "main_shortcut.py"
 
 
 class MainCLITest(unittest.TestCase):

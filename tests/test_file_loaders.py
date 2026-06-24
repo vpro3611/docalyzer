@@ -23,8 +23,8 @@ class FileLoadersTest(unittest.TestCase):
 
     def test_load_unsupported_file(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
-            path = Path(tmpdir) / "hello.json"
-            path.write_text("{\"key\": \"value\"}", encoding="utf-8")
+            path = Path(tmpdir) / "hello.unsupported"
+            path.write_text("some content", encoding="utf-8")
             with self.assertRaises(FileLoadError):
                 load_file(path)
 
