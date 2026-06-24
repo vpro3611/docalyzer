@@ -169,6 +169,8 @@ class GeminiClient:
 
     def _sleep_with_backoff(self, attempt: int) -> None:
         delay = self.initial_retry_delay * (2 ** attempt)
-        logger.debug(f"Backing off for {delay:.1f} seconds before retry")
+        logger.debug(
+            "Backing off for %.1f seconds before retry",
+            delay,
+        )
         time.sleep(delay)
-        
