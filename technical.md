@@ -2,7 +2,7 @@
 
 **Architecture, design decisions, and implementation details for developers**
 
-## 📐 Architecture Overview
+##  Architecture Overview
 
 Docalyzer follows a modular, layered architecture with clear separation of concerns:
 
@@ -34,7 +34,7 @@ graph TD
 3. **LLM Integration** (`gemini_client.py`): API abstraction, error handling, retry logic
 4. **File Loading** (`file_loaders.py`): Multi-format document parsing
 
-## 🏗️ Module Design
+##  Module Design
 
 ### 1. Main Module (`src/docalyzer/main.py`)
 
@@ -83,8 +83,8 @@ def summarize_long_text(
 4. Join chunks with double newline
 
 **Tradeoff: Simplicity vs. Quality**
-- ✅ Pros: Fast, no dependencies, works offline
-- ❌ Cons: Simple sentence extraction, doesn't understand context
+-  Pros: Fast, no dependencies, works offline
+-  Cons: Simple sentence extraction, doesn't understand context
 
 **Gemini Integration**:
 - Delegates to `GeminiClient` for API calls
@@ -198,11 +198,11 @@ def load_pdf(path: Path) -> str:
 - `FileLoadError`: Base exception for all file loading errors
 
 **Design Decision**: Decorator pattern for extensibility
-- ✅ Easy to add new formats
-- ✅ Dynamic registration
-- ❌ Less explicit than explicit function mapping
+-  Easy to add new formats
+-  Dynamic registration
+-  Less explicit than explicit function mapping
 
-## 🔄 Data Flow Diagram
+##  Data Flow Diagram
 
 ```mermaid
 graph LR
@@ -225,7 +225,7 @@ graph LR
     L -->|Print| M["User Output"]
 ```
 
-## 🧪 Testing Strategy
+##  Testing Strategy
 
 ### Test Coverage
 
@@ -265,12 +265,12 @@ def test_retry_logic(mock_client):
 ```
 
 **Why No Live API Tests**:
-- ✅ Faster (no network latency)
-- ✅ Consistent (no API rate limits)
-- ✅ Cost-free (no API charges)
-- ✅ Reproducible (no external dependencies)
+-  Faster (no network latency)
+-  Consistent (no API rate limits)
+-  Cost-free (no API charges)
+-  Reproducible (no external dependencies)
 
-## 🚨 Error Handling Patterns
+##  Error Handling Patterns
 
 ### Pattern 1: Validation Errors (No Retry)
 
@@ -301,7 +301,7 @@ def summarize_long_text(..., use_gemini=False):
             return f"Gemini failed: {error}"  # Return error, don't crash
 ```
 
-## 🔐 Security Considerations
+##  Security Considerations
 
 ### API Key Management
 
@@ -311,19 +311,19 @@ GEMINI_API_KEY=sk_live_xxxxxxxxxxxxx
 ```
 
 **Best Practices**:
-1. ✅ Use `.env` file, not hardcoded values
-2. ✅ Add `.env` to `.gitignore`
-3. ✅ Use environment-specific keys in production
-4. ✅ Rotate keys regularly
-5. ✅ Consider secret management tools (GitHub Secrets, HashiCorp Vault)
+1.  Use `.env` file, not hardcoded values
+2.  Add `.env` to `.gitignore`
+3.  Use environment-specific keys in production
+4.  Rotate keys regularly
+5.  Consider secret management tools (GitHub Secrets, HashiCorp Vault)
 
 ### Input Validation
 
-- ✅ File paths validated before loading
-- ✅ Text size limits prevent memory exhaustion
-- ✅ Timeout prevents hanging requests
+-  File paths validated before loading
+-  Text size limits prevent memory exhaustion
+-  Timeout prevents hanging requests
 
-## 📊 Performance Characteristics
+##  Performance Characteristics
 
 | Operation | Time | Notes |
 |-----------|------|-------|
@@ -340,13 +340,11 @@ GEMINI_API_KEY=sk_live_xxxxxxxxxxxxx
 3. **Streaming**: Stream large document parsing
 4. **Batch API**: Process multiple files in one API call
 
-## 🔮 Future Enhancements
+##  Future Enhancements
 
 ### Short Term (1-2 releases)
 - [ ] `--model` CLI flag for runtime model selection
-- [ ] `README.md` documentation ✅ Done
 - [ ] GitHub Actions CI pipeline
-- [ ] Logging in `summarizer.py` for consistency
 
 ### Medium Term (2-3 releases)
 - [ ] Support for other LLM providers (OpenAI, Claude, Llama)
@@ -360,7 +358,7 @@ GEMINI_API_KEY=sk_live_xxxxxxxxxxxxx
 - [ ] Multi-language support
 - [ ] Fine-tuned summarization templates
 
-## 🛠️ Development Workflow
+##  Development Workflow
 
 ### Adding a New File Format
 
@@ -401,7 +399,7 @@ docalyzer document.pdf --gemini
 - **API key error**: Check `.env` file and `GEMINI_API_KEY` value
 - **Rate limiting**: Increase `GEMINI_MAX_RETRIES` in `.env`
 
-## 📚 Dependencies & Rationale
+##  Dependencies & Rationale
 
 | Dependency | Version | Purpose | Rationale |
 |-----------|---------|---------|-----------|
@@ -415,12 +413,12 @@ docalyzer document.pdf --gemini
 | `pyyaml` | >=6.0 | YAML parsing | Official YAML library |
 
 **Not Used**:
-- ❌ `pytest`: `unittest` is sufficient for small projects
-- ❌ `click`: `argparse` is standard library
-- ❌ `pydantic`: Over-engineered for current config needs
-- ❌ `asyncio`: Synchronous API is simpler for CLI tool
+-  `pytest`: `unittest` is sufficient for small projects
+-  `click`: `argparse` is standard library
+-  `pydantic`: Over-engineered for current config needs
+-  `asyncio`: Synchronous API is simpler for CLI tool
 
-## 🎯 Code Quality Standards
+##  Code Quality Standards
 
 ### Type Hints
 - All functions have type hints
@@ -445,7 +443,7 @@ docalyzer document.pdf --gemini
 
 ---
 
-## 📖 Related Documentation
+##  Related Documentation
 
 - **[README.md](README.md)** - User guide, installation, and usage examples
 
