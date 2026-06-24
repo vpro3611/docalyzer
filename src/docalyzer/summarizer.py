@@ -1,8 +1,6 @@
 from __future__ import annotations
 
 import re
-from typing import Sequence
-
 from docalyzer.gemini_client import GeminiAPIError, GeminiClient
 
 
@@ -42,8 +40,10 @@ def summarize_long_text(
         except ValueError as error:
             return f"Gemini configuration error: {error}"
 
-    chunks = [text[i : i + chunk_size] for i in range(0, len(text), chunk_size)]
-    chunk_summaries = [summarize_text(chunk, max_sentences=2) for chunk in chunks]
+    chunks = [text[i:i + chunk_size] for i in range(0, len(text), chunk_size)]
+    chunk_summaries = [
+        summarize_text(chunk, max_sentences=2) for chunk in chunks
+    ]
     return "\n\n".join(chunk_summaries)
 
 

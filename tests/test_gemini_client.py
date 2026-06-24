@@ -1,9 +1,6 @@
 import os
-import time
 import unittest
 from unittest import mock
-
-from google.genai import errors as genai_errors
 
 from docalyzer.gemini_client import GeminiAPIError, GeminiClient
 
@@ -120,7 +117,9 @@ class TestGeminiClient(unittest.TestCase):
         ]
 
         client = GeminiClient(
-            api_key=self.api_key, max_retries=3, initial_retry_delay=1.0
+            api_key=self.api_key,
+            max_retries=3,
+            initial_retry_delay=1.0,
         )
 
         with self.assertRaises(GeminiAPIError):
@@ -138,7 +137,10 @@ class TestGeminiClient(unittest.TestCase):
             RuntimeError("Persistent server error")
         )
 
-        client = GeminiClient(api_key=self.api_key, max_retries=2)
+        client = GeminiClient(
+            api_key=self.api_key,
+            max_retries=2,
+        )
 
         with self.assertRaises(GeminiAPIError) as ctx:
             client.summarize("This is a long text.")

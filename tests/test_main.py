@@ -4,7 +4,7 @@ import subprocess
 import tempfile
 import unittest
 from pathlib import Path
-from unittest import mock
+
 
 SCRIPT = Path(__file__).resolve().parent.parent / "main.py"
 

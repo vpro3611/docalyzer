@@ -59,7 +59,9 @@ class GeminiClient:
         self.initial_retry_delay = initial_retry_delay
         self.client = genai.Client(api_key=api_key)
         logger.debug(
-            f"Initialized GeminiClient with model={model}, max_retries={max_retries}"
+            "Initialized GeminiClient with model=%s, max_retries=%d",
+            model,
+            max_retries,
         )
 
     @classmethod
@@ -93,7 +95,9 @@ class GeminiClient:
         for attempt in range(self.max_retries):
             try:
                 logger.debug(
-                    f"Calling Gemini API (attempt {attempt + 1}/{self.max_retries})"
+                    "Calling Gemini API (attempt %d/%d)",
+                    attempt + 1,
+                    self.max_retries,
                 )
                 response = self.client.models.generate_content(
                     model=self.model,
@@ -109,7 +113,10 @@ class GeminiClient:
                 if not text:
                     raise GeminiAPIError("Gemini API returned empty text")
 
-                logger.debug(f"Gemini API call successful on attempt {attempt + 1}")
+                logger.debug(
+                    "Gemini API call successful on attempt %d",
+                    attempt + 1,
+                )
                 return text
 
             except GeminiAPIError:
@@ -119,7 +126,9 @@ class GeminiClient:
             except genai_errors.ClientError as error:
                 last_error = error
                 logger.warning(
-                    f"Gemini client error on attempt {attempt + 1}: {error}"
+                    "Gemini client error on attempt %d: %s",
+                    attempt + 1,
+                    error,
                 )
                 if attempt < self.max_retries - 1:
                     self._sleep_with_backoff(attempt)
@@ -127,7 +136,9 @@ class GeminiClient:
             except genai_errors.ServerError as error:
                 last_error = error
                 logger.warning(
-                    f"Gemini server error on attempt {attempt + 1}: {error}"
+                    "Gemini server error on attempt %d: %s",
+                    attempt + 1,
+                    error,
                 )
                 if attempt < self.max_retries - 1:
                     self._sleep_with_backoff(attempt)
@@ -135,7 +146,9 @@ class GeminiClient:
             except genai_errors.APIError as error:
                 last_error = error
                 logger.error(
-                    f"Gemini API error on attempt {attempt + 1}: {error}",
+                    "Gemini API error on attempt %d: %s",
+                    attempt + 1,
+                    error,
                 )
                 if attempt < self.max_retries - 1:
                     self._sleep_with_backoff(attempt)
@@ -143,7 +156,9 @@ class GeminiClient:
             except Exception as error:
                 last_error = error
                 logger.error(
-                    f"Unexpected error on attempt {attempt + 1}: {error}",
+                    "Unexpected error on attempt %d: %s",
+                    attempt + 1,
+                    error,
                 )
                 if attempt < self.max_retries - 1:
                     self._sleep_with_backoff(attempt)

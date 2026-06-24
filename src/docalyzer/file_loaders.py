@@ -110,7 +110,10 @@ def load_xml_file(path: Path) -> str:
 
     def _pretty(element: ET.Element, level: int = 0) -> str:
         indent = "  " * level
-        lines = [f"{indent}<{element.tag}{''.join(f' {k}=\"{v}\"' for k, v in element.attrib.items())}>"]
+        attrs = "".join(
+            f' {k}="{v}"' for k, v in element.attrib.items()
+        )
+        lines = [f"{indent}<{element.tag}{attrs}>"]
         if element.text and element.text.strip():
             lines.append(f"{indent}  {element.text.strip()}")
         for child in element:
@@ -138,8 +141,7 @@ def load_csv_file(path: Path) -> str:
         reader = csv.reader(csvfile)
         lines = []
         for index, row in enumerate(reader):
-            lines.append(", ".join(cell for cell in row if cell != "")
-            )
+            lines.append(", ".join(cell for cell in row if cell != ""))
             if index >= 19:
                 break
     return "\n".join(lines)
@@ -189,9 +191,10 @@ def _load_xlsx(path: Path) -> str:
     parts = []
     for sheet in workbook.worksheets:
         rows = []
-        for row_index, row in enumerate(sheet.iter_rows(values_only=True), start=1):
-            rows.append(", ".join(str(cell) for cell in row if cell is not None)
-            )
+        for row_index, row in enumerate(
+            sheet.iter_rows(values_only=True), start=1
+        ):
+            rows.append(", ".join(str(cell) for cell in row if cell is not None))
             if row_index >= 20:
                 break
         if rows:
