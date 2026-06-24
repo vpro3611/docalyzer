@@ -7,6 +7,12 @@ from google.genai import errors as genai_errors
 
 from docalyzer.gemini_client import GeminiAPIError, GeminiClient
 
+from docalyzer.gemini_client import (
+    GeminiAPIError,
+    GeminiClient,
+    DEFAULT_MODEL,
+)
+
 
 class TestGeminiClient(unittest.TestCase):
     """Test GeminiClient initialization and error handling."""
@@ -184,6 +190,49 @@ class TestGeminiClient(unittest.TestCase):
     def test_from_env_loads_max_retries(self) -> None:
         client = GeminiClient.from_env(max_retries=3)
         self.assertEqual(client.max_retries, 5)
+
+
+    @mock.patch.dict(
+        os.environ,
+        {
+            "GEMINI_API_KEY": "test_key",
+            "GEMINI_MODEL": "env-model",
+        },
+    )
+    def test_from_env_explicit_model_overrides_env(self) -> None:
+        client = GeminiClient.from_env(model="explicit-model")
+        self.assertEqual(client.model, "explicit-model")
+
+    @mock.patch("docalyzer.gemini_client._load_dotenv_file")
+    @mock.patch.dict(
+        os.environ,
+        {
+            "GEMINI_API_KEY": "test_key",
+        },
+        clear=True,
+    )
+    def test_from_env_uses_default_model(
+        self, mock_load_dotenv: mock.Mock
+    ) -> None:
+        client = GeminiClient.from_env()
+
+        self.assertEqual(client.model, DEFAULT_MODEL)
+
+    @mock.patch("docalyzer.gemini_client.time.sleep")
+    def test_sleep_with_backoff(self, mock_sleep: mock.Mock) -> None:
+        client = GeminiClient(
+            api_key=self.api_key,
+            initial_retry_delay=1.5,
+        )
+
+        client._sleep_with_backoff(0)
+        client._sleep_with_backoff(1)
+        client._sleep_with_backoff(2)
+
+        expected = [1.5, 3.0, 6.0]
+        actual = [call.args[0] for call in mock_sleep.call_args_list]
+
+        self.assertEqual(actual, expected)
 
 
 if __name__ == "__main__":
