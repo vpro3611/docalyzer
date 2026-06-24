@@ -344,7 +344,7 @@ GEMINI_API_KEY=sk_live_xxxxxxxxxxxxx
 
 - [ ] `--model` CLI flag for runtimec gemini model selection
 - [x] GitHub Actions CI pipeline
-- [ ] `--output` flag (JSON, CSV, plain text)
+- [ ] `--output` flag (JSON, md, plain text)
 - [ ] `--tofile` flag (to export summary to a separate user-indicated file) (JSON, md, txt) 
 
 ##  Development Workflow
