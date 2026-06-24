@@ -4,7 +4,7 @@
 
 Docalyzer is a Python CLI tool that intelligently summarizes documents and code files in 18+ formats. It supports both local text processing and AI-powered summarization via Google's Gemini LLM API.
 
-## ✨ Features
+##  Features
 
 - **Multi-format support**: PDF, Word, Excel, PowerPoint, Markdown, JSON, YAML, HTML, XML, CSV, plain text, and more
 - **AI-powered summarization**: Optional Google Gemini API integration for intelligent summaries
@@ -13,7 +13,7 @@ Docalyzer is a Python CLI tool that intelligently summarizes documents and code 
 - **Configurable**: Customize model, retry behavior, and summary length via CLI flags or environment variables
 - **Fully tested**: 12 unit tests with 100% coverage of error handling and retry logic
 
-## 📋 Supported File Formats
+##  Supported File Formats
 
 | Format | Extension | Library |
 |--------|-----------|---------|
@@ -30,7 +30,7 @@ Docalyzer is a Python CLI tool that intelligently summarizes documents and code 
 | CSV | `.csv` | Built-in |
 | Source Code | `.py`, `.js`, `.ts`, `.go`, `.java`, `.c`, `.cpp` | Built-in |
 
-## 🚀 Quick Start
+##  Quick Start
 
 ### 1. Install
 
@@ -62,7 +62,7 @@ docalyzer path/to/document.pdf
 docalyzer path/to/document.pdf --gemini
 ```
 
-## 📖 Usage
+##  Usage
 
 ### Basic Usage
 
@@ -96,7 +96,7 @@ docalyzer research.pdf --gemini --sentences 7
 docalyzer src/main.py --gemini
 ```
 
-## ⚙️ Configuration
+##  Configuration
 
 ### Environment Variables
 
@@ -122,7 +122,7 @@ When not using `--gemini`, the tool chunks your document and processes it locall
 - **Chunks per summary**: 2 sentences each
 - **Final output**: Combined from all chunks
 
-## 🔧 Installation & Development
+##  Installation & Development
 
 ### Requirements
 
@@ -153,7 +153,7 @@ python3 -m unittest discover tests -v
 pip install -r requirements.txt
 ```
 
-## ✅ Testing
+##  Testing
 
 Run the test suite:
 
@@ -171,7 +171,7 @@ The test suite includes:
 - CLI argument parsing and validation
 - Integration tests for end-to-end workflows
 
-## 🐛 Error Handling
+##  Error Handling
 
 Docalyzer includes robust error handling:
 
@@ -201,13 +201,13 @@ $ docalyzer file.xyz
 Error: Unsupported file type: .xyz
 ```
 
-## 📊 Performance
+##  Performance
 
 - **Local summarization**: < 100ms for typical documents
 - **Gemini API call**: ~1-3 seconds (depends on document size and API load)
 - **Large documents** (>100MB): Automatically chunked to avoid timeouts
 
-## 🗂️ Project Structure
+##  Project Structure
 
 ```
 docalyzer/
@@ -225,11 +225,11 @@ docalyzer/
     └── test_gemini_client.py # Comprehensive test suite
 ```
 
-## 📝 License
+##  License
 
 This project is open source. See LICENSE file for details.
 
-## 🤝 Contributing
+##  Contributing
 
 Contributions are welcome! Areas for enhancement:
 - Additional file format support
@@ -238,7 +238,7 @@ Contributions are welcome! Areas for enhancement:
 - Web UI or API server
 - CI/GitHub Actions pipeline
 
-## 📚 Documentation
+##  Documentation
 
 - **[technical.md](technical.md)** - Architecture, design decisions, and implementation details for developers
 
