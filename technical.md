@@ -32,7 +32,8 @@ graph TD
 1. **CLI Layer** (`main.py`): Argument parsing, user interface, orchestration
 2. **Summarization Layer** (`summarizer.py`): Algorithm selection, local vs. AI summarization
 3. **LLM Integration** (`gemini_client.py`): API abstraction, error handling, retry logic
-4. **File Loading** (`file_loaders.py`): Multi-format document parsing
+4. **Model Selection** (`model_enum.py`): User-facing Gemini effort presets mapped to concrete models
+5. **File Loading** (`file_loaders.py`): Multi-format document parsing
 
 ##  Module Design
 
@@ -50,14 +51,25 @@ def main() -> int:
 
 **CLI Arguments**:
 - `path` (required): File to summarize
-- `--sentences` (optional, default 5): Summary length
+- `--sentences` (optional, default 5): Gemini summary length, valid only with `--gemini`
 - `--gemini` (optional flag): Use AI summarization
+- `--model` (optional, default `mid`): Gemini effort level (`low`, `mid`, `high`), valid only with `--gemini`
 
 **Return codes**:
 - `0`: Success
 - `1`: File not found or processing error
 
 **Design Decision**: Simple, synchronous CLI using `argparse` for clarity and standard library compatibility.
+
+**Model effort mapping**:
+- `low` → `gemini-2.5-flash-lite`
+- `mid` → `gemini-2.5-flash`
+- `high` → `gemini-2.5-pro`
+
+**Validation rules**:
+- `--sentences` requires `--gemini`
+- `--model` requires `--gemini`
+- `--sentences` must be between `1` and `250`
 
 ### 2. Summarizer Module (`src/docalyzer/summarizer.py`)
 
@@ -69,6 +81,7 @@ def summarize_text(text: str, max_sentences: int = 5) -> str:
     
 def summarize_long_text(
     text: str,
+    model_kind: ModelEnum | None = None,
     chunk_size: int = 2000,
     max_sentences: int = 5,
     use_gemini: bool = False
@@ -88,10 +101,38 @@ def summarize_long_text(
 
 **Gemini Integration**:
 - Delegates to `GeminiClient` for API calls
+- Resolves user-facing effort levels through `MODEL_MAP`
 - Catches `GeminiAPIError` and `ValueError`
 - Returns error string instead of raising (graceful degradation)
 
-### 3. Gemini Client Module (`src/docalyzer/gemini_client.py`)
+**Model selection flow**:
+1. CLI parses `--model` into `ModelEnum`
+2. `summarize_long_text()` converts that enum to a concrete Gemini model name
+3. `GeminiClient.from_env(model=...)` receives the resolved model
+4. If no CLI effort is provided, the summarizer falls back to `DEFAULT_MODEL`
+
+### 3. Model Selection Module (`src/docalyzer/model_enum.py`)
+
+**Responsibility**: Keep CLI model selection stable while allowing concrete Gemini models to change internally
+
+```python
+class ModelEnum(StrEnum):
+    LOW = "low"
+    MID = "mid"
+    HIGH = "high"
+
+MODEL_MAP = {
+    ModelEnum.LOW: "gemini-2.5-flash-lite",
+    ModelEnum.MID: "gemini-2.5-flash",
+    ModelEnum.HIGH: "gemini-2.5-pro",
+}
+```
+
+**Design Decision**: Introduce a thin enum layer instead of exposing raw Gemini model IDs directly on the CLI.
+- Pros: Stable UX, easier docs, safer future model swaps
+- Cons: One more mapping layer to maintain
+
+### 4. Gemini Client Module (`src/docalyzer/gemini_client.py`)
 
 **Responsibility**: API abstraction, error handling, retry logic
 
@@ -128,6 +169,7 @@ class GeminiClient:
 - Supports `GEMINI_API_KEY`, `GEMINI_MODEL`, `GEMINI_MAX_RETRIES`
 - Custom implementation if `python-dotenv` not available
 - Falls back gracefully with clear error messages
+- Allows the caller to override the environment model at runtime
 
 #### Error Classification
 
@@ -166,12 +208,13 @@ graph TD
 | Decision | Rationale | Tradeoff |
 |----------|-----------|----------|
 | Class abstraction | Future model flexibility | Extra complexity |
+| Runtime model override | CLI effort selection should beat `.env` defaults | Slightly more config flow to reason about |
 | Custom error handling | Distinguish retry-able errors | More code |
 | Exponential backoff | Reduce API server load | Longer wait on failures |
 | selective retries | Don't mask validation bugs | Must classify errors |
 | Logging integration | Production debugging | Performance overhead (minimal) |
 
-### 4. File Loaders Module (`src/docalyzer/file_loaders.py`)
+### 5. File Loaders Module (`src/docalyzer/file_loaders.py`)
 
 **Responsibility**: Multi-format document parsing
 
@@ -211,7 +254,8 @@ graph LR
     C -->|Raw Text| D["Summarize?"]
     
     D -->|use_gemini=False| E["Local Algorithm<br/>Chunking"]
-    D -->|use_gemini=True| F["Create Gemini Client<br/>from_env"]
+    D -->|use_gemini=True| E1["Resolve Model Effort<br/>low/mid/high"]
+    E1 --> F["Create Gemini Client<br/>from_env(model=...)"]
     
     F -->|Config| G["Load .env<br/>& Environment"]
     G -->|API Key + Model| H["Generate Prompt<br/>& Call API"]
@@ -231,26 +275,21 @@ graph LR
 
 ```
 tests/
-└── test_gemini_client.py (12 tests, 100% passing)
-    ├── Initialization Tests (4)
-    │   ├── Custom retry settings
-    │   ├── Environment loading
-    │   ├── Missing API key error
-    │   └── Model from environment override
-    ├── API Call Tests (3)
-    │   ├── Successful summarization
-    │   ├── Validation error (no retry)
-    │   └── Generic error handling
-    ├── Retry Logic Tests (3)
-    │   ├── Transient error retry
-    │   ├── Max retries exhaustion
-    │   └── Exponential backoff calculation
-    └── Integration Tests (2)
-        ├── Error logging verification
-        └── Mock API call chain
+├── test_file_loaders.py
+├── test_gemini_client.py
+├── test_main.py
+├── test_model_enum.py
+└── test_summarizer.py
 ```
 
 ### Testing Approach
+
+**Current coverage areas**:
+- File loader behavior for core text-based formats and error paths
+- Gemini client environment loading, retry logic, and failure handling
+- CLI argument validation for `--gemini`, `--sentences`, and `--model`
+- Model effort mapping stability
+- Summarizer routing for local vs. Gemini execution
 
 **Mocking Strategy**:
 ```python
@@ -296,7 +335,7 @@ except (genai_errors.ServerError, genai_errors.APIError) as e:
 def summarize_long_text(..., use_gemini=False):
     if use_gemini:
         try:
-            return GeminiClient.from_env().summarize(text)
+            return GeminiClient.from_env(model=resolved_model).summarize(text)
         except (GeminiAPIError, ValueError) as error:
             return f"Gemini failed: {error}"  # Return error, don't crash
 ```
@@ -342,9 +381,9 @@ GEMINI_API_KEY=sk_live_xxxxxxxxxxxxx
 
 ##  Future Enhancements
 
-- [ ] `--model` CLI flag for runtimec gemini model selection
+- [x] `--model` CLI flag for runtime Gemini model-effort selection
 - [x] GitHub Actions CI pipeline
-- [ ] `--output` flag (JSON, CSV, plain text)
+- [ ] `--output` flag (JSON, md, plain text)
 - [ ] `--tofile` flag (to export summary to a separate user-indicated file) (JSON, md, txt) 
 
 ##  Development Workflow

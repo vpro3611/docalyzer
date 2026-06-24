@@ -6,6 +6,8 @@ import time
 import types
 from pathlib import Path
 
+DEFAULT_MODEL: str = "gemini-2.5-flash"
+
 try:
     from dotenv import load_dotenv
 except ImportError:  # pragma: no cover
@@ -75,7 +77,7 @@ class GeminiClient:
     def __init__(
         self,
         api_key: str,
-        model: str = "gemini-2.5-flash",
+        model: str = DEFAULT_MODEL,
         timeout: int = 30,
         max_retries: int = 3,
         initial_retry_delay: float = 1.0,
@@ -91,11 +93,12 @@ class GeminiClient:
         logger.debug(
             f"Initialized GeminiClient with model={model}, max_retries={max_retries}"
         )
+        print(f"Model being used: {model}")
 
     @classmethod
     def from_env(
         cls,
-        model: str = "gemini-2.5-flash",
+        model: str | None = None,
         env_path: str | Path | None = None,
         max_retries: int = 3,
     ) -> "GeminiClient":
@@ -103,7 +106,7 @@ class GeminiClient:
         api_key = os.environ.get("GEMINI_API_KEY")
         if not api_key:
             raise ValueError("GEMINI_API_KEY is not set in the environment")
-        model = os.environ.get("GEMINI_MODEL", model)
+        model = model or os.environ.get("GEMINI_MODEL", DEFAULT_MODEL)
         max_retries = int(os.environ.get("GEMINI_MAX_RETRIES", max_retries))
         logger.debug(f"Loaded Gemini config from environment: model={model}")
         return cls(api_key=api_key, model=model, max_retries=max_retries)

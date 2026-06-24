@@ -10,8 +10,8 @@ Docalyzer is a Python CLI tool that intelligently summarizes documents and code 
 - **AI-powered summarization**: Optional Google Gemini API integration for intelligent summaries
 - **Local fallback**: Built-in chunking algorithm for offline summarization
 - **Production-ready**: Error handling with exponential backoff retries, comprehensive logging
-- **Configurable**: Customize model, retry behavior, and summary length via CLI flags or environment variables
-- **Fully tested**: 12 unit tests with 100% coverage of error handling and retry logic
+- **Configurable**: Customize Gemini model effort, and summary length via CLI flags or environment variables
+- **Fully tested**: 43 unit tests covering CLI validation, model selection, summarization, and Gemini retry handling
 
 ##  Supported File Formats
 
@@ -62,6 +62,11 @@ docalyzer path/to/document.pdf
 docalyzer path/to/document.pdf --gemini
 ```
 
+**AI-powered summarization with model effort selection:**
+```bash
+docalyzer path/to/document.pdf --gemini --model high --sentences 7
+```
+
 ##  Usage
 
 ### Basic Usage
@@ -74,8 +79,19 @@ docalyzer <filepath> [OPTIONS]
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
-| `--sentences` | int | 5 | Maximum number of sentences in the summary |
+| `--sentences` | int | 5 | Maximum number of sentences in the Gemini summary (`1-250`, requires `--gemini`) |
 | `--gemini` | flag | False | Use Google Gemini API for summarization |
+| `--model` | `low \| mid \| high` | `mid` | Gemini effort level to use for AI summarization (requires `--gemini`) |
+
+### Model Effort Levels
+
+When using `--gemini`, you can choose a higher or lower model effort depending on speed and quality needs:
+
+| Effort | Gemini model |
+|--------|--------------|
+| `low` | `gemini-2.5-flash-lite` |
+| `mid` | `gemini-2.5-flash` |
+| `high` | `gemini-2.5-pro` |
 
 ### Examples
 
@@ -83,14 +99,17 @@ docalyzer <filepath> [OPTIONS]
 # Summarize a text file (local)
 docalyzer document.txt
 
-# Summarize with custom length (3 sentences)
-docalyzer report.pdf --sentences 3
+# Summarize with Gemini and a custom summary length
+docalyzer report.pdf --gemini --sentences 3
 
 # Use Gemini AI for better summaries
 docalyzer whitepaper.docx --gemini
 
-# Combine both options
-docalyzer research.pdf --gemini --sentences 7
+# Use higher effort for a richer summary
+docalyzer research.pdf --gemini --model high
+
+# Combine Gemini, model effort, and custom sentence count
+docalyzer research.pdf --gemini --model low --sentences 7
 
 # Summarize source code
 docalyzer src/main.py --gemini
@@ -109,11 +128,18 @@ GEMINI_MODEL=gemini-2.5-flash          # Model to use (default: gemini-2.5-flash
 GEMINI_MAX_RETRIES=3                   # Max retries on transient errors (default: 3)
 ```
 
+`GEMINI_MODEL` defines the concrete Gemini model used by default for AI summarization. The CLI `--model` flag has higher priority and lets you choose between `low`, `mid`, and `high` effort presets at runtime.
+
 ### Configuration Priority
 
 1. Command-line flags (highest priority)
 2. Environment variables
 3. Defaults (lowest priority)
+
+For Gemini model selection, the effective order is:
+1. `--model low|mid|high`
+2. `GEMINI_MODEL`
+3. Built-in default model
 
 ### Local Summarization
 
@@ -121,6 +147,7 @@ When not using `--gemini`, the tool chunks your document and processes it locall
 - **Chunk size**: 2000 characters
 - **Chunks per summary**: 2 sentences each
 - **Final output**: Combined from all chunks
+- **CLI note**: `--sentences` and `--model` apply only to Gemini summarization
 
 ##  Installation & Development
 
@@ -233,7 +260,6 @@ This project is open source. See LICENSE file for details.
 
 Contributions are welcome! Areas for enhancement:
 - Additional file format support
-- Custom model selection via CLI
 - Output format options (JSON, CSV export)
 - Web UI or API server
 - CI/GitHub Actions pipeline

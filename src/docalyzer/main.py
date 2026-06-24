@@ -6,6 +6,7 @@ from pathlib import Path
 from docalyzer.file_loaders import FileLoadError, SUPPORTED_EXTENSIONS, load_file
 from docalyzer.summarizer import shorten_title, summarize_long_text
 
+from docalyzer.model_enum import ModelEnum
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
@@ -22,13 +23,19 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--sentences",
         type=int,
-        default=5,
+        default=None,
         help="Maximum number of sentences in the summary.",
     )
     parser.add_argument(
         "--gemini",
         action="store_true",
         help="Use Gemini LLM API for summarization.",
+    )
+    parser.add_argument(
+        "--model",
+        type=ModelEnum,
+        default=None,
+        help="Define model which will be used for summary. Available: low, mid, high"
     )
     return parser
 
@@ -37,10 +44,38 @@ def main() -> int:
     parser = build_parser()
     args = parser.parse_args()
     path = args.path
+    max_sentences: int = 5
 
     if not path.exists():
         print(f"File not found: {path}")
         return 1
+
+    if args.sentences is not None and not args.gemini: 
+        print("--sentences requires flag --gemini and only works with AI summarizer")
+        return 1
+
+    if args.sentences is not None and args.gemini: 
+        if args.sentences < 1 or args.sentences > 250:
+            print(f"Sentences cannot be less than 1 and more than 250! Current amount: {args.sentences}")
+            return 1
+        max_sentences = args.sentences
+    
+    if args.model is not None and not args.gemini:
+        print("--model requires flag --gemini and only works with AI summarizer")
+        return 1
+
+    model: ModelEnum = None
+
+    if args.model is None: 
+        model = ModelEnum.MID
+    else: 
+        model = args.model 
+
+    print(f"Target: {path}")
+
+    if args.gemini: 
+        print(f"Max sentences output: {max_sentences}")
+        print(f"Model effort: {model}")
 
     try:
         raw_text = load_file(path)
@@ -54,7 +89,8 @@ def main() -> int:
     title = shorten_title(path.stem)
     summary = summarize_long_text(
         raw_text,
-        max_sentences=args.sentences,
+        model_kind=model,
+        max_sentences=max_sentences,
         use_gemini=args.gemini,
     )
 
