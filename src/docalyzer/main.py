@@ -22,7 +22,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--sentences",
         type=int,
-        default=5,
+        default=None,
         help="Maximum number of sentences in the summary.",
     )
     parser.add_argument(
@@ -40,6 +40,10 @@ def main() -> int:
 
     if not path.exists():
         print(f"File not found: {path}")
+        return 1
+
+    if args.sentences is not None and not args.gemini: 
+        print("--sentences requires flag --gemini and only works with AI summarizer")
         return 1
 
     try:
