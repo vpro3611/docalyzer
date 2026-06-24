@@ -171,4 +171,3 @@ class GeminiClient:
         delay = self.initial_retry_delay * (2 ** attempt)
         logger.debug(f"Backing off for {delay:.1f} seconds before retry")
         time.sleep(delay)
-
