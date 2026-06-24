@@ -25,6 +25,11 @@ def build_parser() -> argparse.ArgumentParser:
         default=5,
         help="Maximum number of sentences in the summary.",
     )
+    parser.add_argument(
+        "--gemini",
+        action="store_true",
+        help="Use Gemini LLM API for summarization.",
+    )
     return parser
 
 
@@ -47,7 +52,11 @@ def main() -> int:
         return 1
 
     title = shorten_title(path.stem)
-    summary = summarize_long_text(raw_text, max_sentences=args.sentences)
+    summary = summarize_long_text(
+        raw_text,
+        max_sentences=args.sentences,
+        use_gemini=args.gemini,
+    )
 
     print("\n=== Summary ===\n")
     print(f"File: {path.name}")
