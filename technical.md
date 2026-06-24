@@ -342,21 +342,10 @@ GEMINI_API_KEY=sk_live_xxxxxxxxxxxxx
 
 ##  Future Enhancements
 
-### Short Term (1-2 releases)
-- [ ] `--model` CLI flag for runtime model selection
+- [ ] `--model` CLI flag for runtimec gemini model selection
 - [ ] GitHub Actions CI pipeline
-
-### Medium Term (2-3 releases)
-- [ ] Support for other LLM providers (OpenAI, Claude, Llama)
 - [ ] `--output` flag (JSON, CSV, plain text)
-- [ ] Streaming API responses for real-time output
-- [ ] Cache layer for repeated documents
-
-### Long Term (3+ releases)
-- [ ] Web UI or REST API server
-- [ ] Document comparison (before/after summary)
-- [ ] Multi-language support
-- [ ] Fine-tuned summarization templates
+- [ ] `--tofile` flag (to export summary to a separate user-indicated file) (JSON, md, txt) 
 
 ##  Development Workflow
 
