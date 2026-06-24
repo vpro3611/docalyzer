@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import re
 from typing import Sequence
-
+from docalyzer.model_enum import ModelEnum
+from docalyzer.model_enum import MODEL_MAP
+from docalyzer.gemini_client import DEFAULT_MODEL
 
 def summarize_text(text: str, max_sentences: int = 5) -> str:
     if not text or not text.strip():
@@ -27,6 +29,7 @@ def _split_sentences(text: str) -> list[str]:
 
 def summarize_long_text(
     text: str,
+    model_kind: ModelEnum | None = None,
     chunk_size: int = 2000,
     max_sentences: int = 5,
     use_gemini: bool = False,
@@ -34,8 +37,12 @@ def summarize_long_text(
     if use_gemini:
         try:
             from docalyzer.gemini_client import GeminiAPIError, GeminiClient
+            actual_model: str = DEFAULT_MODEL
+            if model_kind is not None: 
+                actual_model = MODEL_MAP[model_kind]
+                print(f"Model being used: {actual_model} with {model_kind} efforts!")
 
-            client = GeminiClient.from_env()
+            client = GeminiClient.from_env(model=actual_model)
             return client.summarize(text, max_sentences=max_sentences)
         except ImportError as error:
             return f"Gemini summarization failed: {error}"
