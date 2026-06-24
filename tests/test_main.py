@@ -4,7 +4,6 @@ import subprocess
 import tempfile
 import unittest
 from pathlib import Path
-from unittest import mock
 
 SCRIPT = Path(__file__).resolve().parent.parent / "main_shortcut.py"
 
@@ -29,6 +28,127 @@ class MainCLITest(unittest.TestCase):
             )
             self.assertEqual(result.returncode, 1)
             self.assertIn("File not found", result.stdout)
+
+    def test_sentences_requires_gemini(self) -> None:
+        with tempfile.NamedTemporaryFile(suffix=".md") as tmpfile:
+            result = subprocess.run(
+                [
+                    "python3",
+                    str(SCRIPT),
+                    tmpfile.name,
+                    "--sentences",
+                    "5",
+                ],
+                capture_output=True,
+                text=True,
+            )
+
+            self.assertEqual(result.returncode, 1)
+            self.assertIn(
+                "--sentences requires flag --gemini",
+                result.stdout,
+            )
+
+    def test_model_requires_gemini(self) -> None:
+        with tempfile.NamedTemporaryFile(suffix=".md") as tmpfile:
+            result = subprocess.run(
+                [
+                    "python3",
+                    str(SCRIPT),
+                    tmpfile.name,
+                    "--model",
+                    "high",
+                ],
+                capture_output=True,
+                text=True,
+            )
+
+            self.assertEqual(result.returncode, 1)
+            self.assertIn(
+                "--model requires flag --gemini",
+                result.stdout,
+            )
+
+    def test_sentences_cannot_be_zero(self) -> None:
+        with tempfile.NamedTemporaryFile(suffix=".md") as tmpfile:
+            result = subprocess.run(
+                [
+                    "python3",
+                    str(SCRIPT),
+                    tmpfile.name,
+                    "--gemini",
+                    "--sentences",
+                    "0",
+                ],
+                capture_output=True,
+                text=True,
+            )
+
+            self.assertEqual(result.returncode, 1)
+            self.assertIn(
+                "Sentences cannot be less than 1 and more than 250",
+                result.stdout,
+            )
+
+    def test_sentences_cannot_be_negative(self) -> None:
+        with tempfile.NamedTemporaryFile(suffix=".md") as tmpfile:
+            result = subprocess.run(
+                [
+                    "python3",
+                    str(SCRIPT),
+                    tmpfile.name,
+                    "--gemini",
+                    "--sentences",
+                    "-5",
+                ],
+                capture_output=True,
+                text=True,
+            )
+
+            self.assertEqual(result.returncode, 1)
+            self.assertIn(
+                "Sentences cannot be less than 1 and more than 250",
+                result.stdout,
+            )
+
+    def test_sentences_cannot_exceed_limit(self) -> None:
+        with tempfile.NamedTemporaryFile(suffix=".md") as tmpfile:
+            result = subprocess.run(
+                [
+                    "python3",
+                    str(SCRIPT),
+                    tmpfile.name,
+                    "--gemini",
+                    "--sentences",
+                    "251",
+                ],
+                capture_output=True,
+                text=True,
+            )
+
+            self.assertEqual(result.returncode, 1)
+            self.assertIn(
+                "Sentences cannot be less than 1 and more than 250",
+                result.stdout,
+            )
+
+    def test_invalid_model_value(self) -> None:
+        with tempfile.NamedTemporaryFile(suffix=".md") as tmpfile:
+            result = subprocess.run(
+                [
+                    "python3",
+                    str(SCRIPT),
+                    tmpfile.name,
+                    "--gemini",
+                    "--model",
+                    "invalid",
+                ],
+                capture_output=True,
+                text=True,
+            )
+
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("invalid", result.stderr.lower())
 
 
 if __name__ == "__main__":
