@@ -3,10 +3,8 @@ from __future__ import annotations
 import logging
 import os
 import time
+import types
 from pathlib import Path
-
-from google import genai
-from google.genai import errors as genai_errors
 
 try:
     from dotenv import load_dotenv
@@ -14,6 +12,36 @@ except ImportError:  # pragma: no cover
     load_dotenv = None
 
 logger = logging.getLogger(__name__)
+
+genai = types.SimpleNamespace(Client=None, _is_placeholder=True)
+genai_errors = types.SimpleNamespace(
+    ClientError=Exception,
+    ServerError=Exception,
+    APIError=Exception,
+    _is_placeholder=True,
+)
+
+
+def _import_genai() -> tuple[object, object]:
+    global genai, genai_errors
+
+    if getattr(genai, "_is_placeholder", False) and genai.Client is not None:
+        return genai, genai_errors
+
+    try:
+        from google import genai as imported_genai
+        from google.genai import errors as imported_genai_errors
+    except ImportError as exc:
+        if getattr(genai, "_is_placeholder", False) and genai.Client is not None:
+            return genai, genai_errors
+        raise ImportError(
+            "google-genai is required for Gemini summarization. "
+            "Install it with 'pip install google-genai' or remove --gemini."
+        ) from exc
+
+    genai = imported_genai
+    genai_errors = imported_genai_errors
+    return genai, genai_errors
 
 
 class GeminiAPIError(RuntimeError):
@@ -57,7 +85,9 @@ class GeminiClient:
         self.timeout = timeout
         self.max_retries = max_retries
         self.initial_retry_delay = initial_retry_delay
-        self.client = genai.Client(api_key=api_key)
+        genai_module, genai_errors_module = _import_genai()
+        self.client = genai_module.Client(api_key=api_key)
+        self.genai_errors = genai_errors_module
         logger.debug(
             f"Initialized GeminiClient with model={model}, max_retries={max_retries}"
         )
@@ -116,7 +146,7 @@ class GeminiClient:
                 # Don't retry on validation errors
                 raise
 
-            except genai_errors.ClientError as error:
+            except self.genai_errors.ClientError as error:
                 last_error = error
                 logger.warning(
                     f"Gemini client error on attempt {attempt + 1}: {error}"
@@ -124,7 +154,7 @@ class GeminiClient:
                 if attempt < self.max_retries - 1:
                     self._sleep_with_backoff(attempt)
 
-            except genai_errors.ServerError as error:
+            except self.genai_errors.ServerError as error:
                 last_error = error
                 logger.warning(
                     f"Gemini server error on attempt {attempt + 1}: {error}"
@@ -132,7 +162,7 @@ class GeminiClient:
                 if attempt < self.max_retries - 1:
                     self._sleep_with_backoff(attempt)
 
-            except genai_errors.APIError as error:
+            except self.genai_errors.APIError as error:
                 last_error = error
                 logger.error(
                     f"Gemini API error on attempt {attempt + 1}: {error}",

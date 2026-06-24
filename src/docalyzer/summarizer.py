@@ -3,8 +3,6 @@ from __future__ import annotations
 import re
 from typing import Sequence
 
-from docalyzer.gemini_client import GeminiAPIError, GeminiClient
-
 
 def summarize_text(text: str, max_sentences: int = 5) -> str:
     if not text or not text.strip():
@@ -35,8 +33,12 @@ def summarize_long_text(
 ) -> str:
     if use_gemini:
         try:
+            from docalyzer.gemini_client import GeminiAPIError, GeminiClient
+
             client = GeminiClient.from_env()
             return client.summarize(text, max_sentences=max_sentences)
+        except ImportError as error:
+            return f"Gemini summarization failed: {error}"
         except GeminiAPIError as error:
             return f"Gemini summarization failed: {error}"
         except ValueError as error:
