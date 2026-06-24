@@ -93,7 +93,6 @@ def load_html_file(path: Path) -> str:
     return text
 
 
-@register_loader((".json",))
 def load_json_file(path: Path) -> str:
     raw_text = path.read_text(encoding="utf-8", errors="replace")
     parsed = json.loads(raw_text)
