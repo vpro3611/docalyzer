@@ -33,7 +33,8 @@ graph TD
 2. **Summarization Layer** (`summarizer.py`): Algorithm selection, local vs. AI summarization
 3. **LLM Integration** (`gemini_client.py`): API abstraction, error handling, retry logic
 4. **Model Selection** (`model_enum.py`): User-facing Gemini effort presets mapped to concrete models
-5. **File Loading** (`file_loaders.py`): Multi-format document parsing
+5. **Output Selection** (`outupt_enum.py`): User-facing Gemini output format selection
+6. **File Loading** (`file_loaders.py`): Multi-format document parsing
 
 ##  Module Design
 
@@ -54,6 +55,7 @@ def main() -> int:
 - `--sentences` (optional, default 5): Gemini summary length, valid only with `--gemini`
 - `--gemini` (optional flag): Use AI summarization
 - `--model` (optional, default `mid`): Gemini effort level (`low`, `mid`, `high`), valid only with `--gemini`
+- `--output` (optional, default `txt`): Gemini output format (`txt`, `md`, `json`), valid only with `--gemini`
 
 **Return codes**:
 - `0`: Success
@@ -69,6 +71,7 @@ def main() -> int:
 **Validation rules**:
 - `--sentences` requires `--gemini`
 - `--model` requires `--gemini`
+- `--output` requires `--gemini`
 - `--sentences` must be between `1` and `250`
 
 ### 2. Summarizer Module (`src/docalyzer/summarizer.py`)
@@ -84,7 +87,8 @@ def summarize_long_text(
     model_kind: ModelEnum | None = None,
     chunk_size: int = 2000,
     max_sentences: int = 5,
-    use_gemini: bool = False
+    use_gemini: bool = False,
+    output_format: OutputEnum = OutputEnum.PLAIN,
 ) -> str:
     """Route to Gemini API or local chunking"""
 ```
@@ -102,14 +106,18 @@ def summarize_long_text(
 **Gemini Integration**:
 - Delegates to `GeminiClient` for API calls
 - Resolves user-facing effort levels through `MODEL_MAP`
+- Passes `output_format` through to the Gemini request builder
 - Catches `GeminiAPIError` and `ValueError`
 - Returns error string instead of raising (graceful degradation)
 
-**Model selection flow**:
+**Model and output selection flow**:
 1. CLI parses `--model` into `ModelEnum`
-2. `summarize_long_text()` converts that enum to a concrete Gemini model name
-3. `GeminiClient.from_env(model=...)` receives the resolved model
-4. If no CLI effort is provided, the summarizer falls back to `DEFAULT_MODEL`
+2. CLI parses `--output` into `OutputEnum`
+3. `summarize_long_text()` converts the selected model enum into a concrete Gemini model name
+4. `GeminiClient.from_env(model=...)` receives the resolved model
+5. `GeminiClient.summarize(..., output_format=...)` receives the selected output format
+6. If no CLI effort is provided, the summarizer falls back to `DEFAULT_MODEL`
+7. If no CLI output is provided, the system defaults to `OutputEnum.PLAIN`
 
 ### 3. Model Selection Module (`src/docalyzer/model_enum.py`)
 
@@ -132,7 +140,22 @@ MODEL_MAP = {
 - Pros: Stable UX, easier docs, safer future model swaps
 - Cons: One more mapping layer to maintain
 
-### 4. Gemini Client Module (`src/docalyzer/gemini_client.py`)
+### 4. Output Selection Module (`src/docalyzer/outupt_enum.py`)
+
+**Responsibility**: Define user-facing output format values accepted by the CLI and Gemini integration
+
+```python
+class OutputEnum(StrEnum):
+    PLAIN = "txt"
+    MARKDOWN = "md"
+    JSON = "json"
+```
+
+**Design Decision**: Use a small `StrEnum` so CLI parsing remains strict and the rest of the code can work with explicit output variants.
+- Pros: Clear contract, easy validation, less stringly-typed branching
+- Cons: Adds one more enum module to maintain
+
+### 5. Gemini Client Module (`src/docalyzer/gemini_client.py`)
 
 **Responsibility**: API abstraction, error handling, retry logic
 
@@ -158,11 +181,19 @@ class GeminiClient:
     def summarize(
         self,
         text: str,
-        max_sentences: int = 5
+        max_sentences: int = 5,
+        output_format: OutputEnum = OutputEnum.PLAIN,
     ) -> str
 ```
 
 **Key Features**:
+
+#### Output-aware prompt generation
+- Builds different Gemini prompts for `txt`, `md`, and `json`
+- Plain text prompts request readable spacing and non-Markdown output
+- Markdown prompts request headers, bullet points, and a professional structure
+- JSON prompts request a strict response shape with snake_case keys
+- Unknown output values fall back defensively to plain text prompt instructions
 
 #### Environment Loading
 - Reads from `.env` file or `os.environ`
@@ -203,6 +234,26 @@ graph TD
 - **WARNING**: Transient errors before retry
 - **ERROR**: Final failure or validation errors
 
+#### JSON response contract
+
+When `--output json` is selected, the prompt asks Gemini to return only valid JSON using this logical structure:
+
+```json
+{
+  "document_title": "",
+  "short_description": "",
+  "short_summary": "",
+  "full_summary": ""
+}
+```
+
+Requested rules:
+- all keys must use `snake_case`
+- `document_title` should be included if applicable
+- `short_description` should contain 3 sentences
+- `short_summary` should contain 2-3 sentences
+- `full_summary` should contain at most the user-provided sentence limit
+
 #### Design Tradeoffs
 
 | Decision | Rationale | Tradeoff |
@@ -214,7 +265,7 @@ graph TD
 | selective retries | Don't mask validation bugs | Must classify errors |
 | Logging integration | Production debugging | Performance overhead (minimal) |
 
-### 5. File Loaders Module (`src/docalyzer/file_loaders.py`)
+### 6. File Loaders Module (`src/docalyzer/file_loaders.py`)
 
 **Responsibility**: Multi-format document parsing
 
@@ -383,7 +434,7 @@ GEMINI_API_KEY=sk_live_xxxxxxxxxxxxx
 
 - [x] `--model` CLI flag for runtime Gemini model-effort selection
 - [x] GitHub Actions CI pipeline
-- [ ] `--output` flag (JSON, md, plain text)
+- [x] `--output` flag (JSON, md, plain text)
 - [ ] `--tofile` flag (to export summary to a separate user-indicated file) (JSON, md, txt) 
 
 ##  Development Workflow

@@ -6,6 +6,8 @@ import time
 import types
 from pathlib import Path
 
+from docalyzer.outupt_enum import OutputEnum
+
 DEFAULT_MODEL: str = "gemini-2.5-flash"
 
 try:
@@ -111,14 +113,82 @@ class GeminiClient:
         logger.debug(f"Loaded Gemini config from environment: model={model}")
         return cls(api_key=api_key, model=model, max_retries=max_retries)
 
-    def summarize(self, text: str, max_sentences: int = 5) -> str:
-        prompt = (
-            "Summarize the following text in a concise way "
-            f"using no more than {max_sentences} sentences.\n\n"
-            f"Text:\n{text.strip()}"
-        )
+    def summarize(
+        self,
+        text: str,
+        max_sentences: int = 5,
+        output_format: OutputEnum = OutputEnum.PLAIN,
+    ) -> str:
+        prompt: str = self._format_request(text, output_format, max_sentences)
 
         return self._generate_content_with_retry(prompt)
+
+    def _format_request(
+        self, text: str, output_format: OutputEnum, max_sentences: int
+    ) -> str:
+        match output_format:
+            case OutputEnum.PLAIN:
+                prompt = (
+                    "Summarize the following text in professional plain text format.\n\n"
+                    "Make the output clear, polished, and easy to read.\n\n"
+                    "Use short paragraphs or simple bullet-style lines where appropriate, but do not use Markdown syntax or JSON.\n\n"
+                    f"Include a summary using no more than {max_sentences} sentences.\n\n"
+                    "Put a double newline after each line or section for readable plain text spacing.\n\n"
+                    f"The output format must be {output_format.value} (plain text).\n\n"
+                    f"Text:\n\n{text.strip()}"
+                )
+                return prompt
+            case OutputEnum.MARKDOWN:
+                prompt = (
+                    "Summarize the following text in professional Markdown format.\n\n"
+                    "Make the output clear, polished, and easy to scan.\n\n"
+                    "Use proper Markdown headers and bullet points where appropriate.\n\n"
+                    f"Include a summary section using no more than {max_sentences} sentences.\n\n"
+                    "Put a double newline after each line or section for readable Markdown spacing.\n\n"
+                    f"The output format must be {output_format.value} (Markdown).\n\n"
+                    f"Text:\n\n{text.strip()}"
+                )
+                return prompt
+            case OutputEnum.JSON:
+                prompt = (
+                    "Summarize the following text in JSON format.\n\n"
+                    "Return only valid JSON with no surrounding commentary, no markdown fences, and no additional text.\n\n"
+                    f"The output format must be {output_format.value} (JSON).\n\n"
+                    "JSON rules:\n\n"
+                    "1) Use snake_case for all keys.\n\n"
+                    "2) Include document_title if applicable.\n\n"
+                    "3) Include short_description with exactly 3 sentences.\n\n"
+                    "4) Include short_summary with 2 to 3 sentences.\n\n"
+                    f"5) Include full_summary with a maximum of {max_sentences} sentences, as provided by the user.\n\n"
+                    "6) Keep values concise, factual, and based only on the provided text.\n\n"
+                    "7) If a title is not available, use an empty string for document_title.\n\n"
+                    "Use this JSON structure:\n\n"
+                    "{\n"
+                    '  "document_title": "",\n'
+                    '  "short_description": "",\n'
+                    '  "short_summary": "",\n'
+                    '  "full_summary": ""\n'
+                    "}\n\n"
+                    f"Text:\n\n{text.strip()}"
+                )
+                return prompt
+            # Despite case _ beint unreachable, we still need this code, since
+            # it will help to catch a bug (or evade it) when we pass wrong argument to a caller,
+            # therefore, this will be evaluated as a plain text.
+            case _:
+                print(
+                    f"Unknown output format: {output_format} passed. Type: {type(output_format)}"
+                )
+                prompt = (
+                    "Summarize the following text in professional plain text format.\n\n"
+                    "Make the output clear, polished, and easy to read.\n\n"
+                    "Use short paragraphs or simple bullet-style lines where appropriate, but do not use Markdown syntax or JSON.\n\n"
+                    f"Include a summary using no more than {max_sentences} sentences.\n\n"
+                    "Put a double newline after each line or section for readable plain text spacing.\n\n"
+                    "If the requested format is unknown, default to clean plain text output.\n\n"
+                    f"Text:\n\n{text.strip()}"
+                )
+                return prompt
 
     def _generate_content_with_retry(self, prompt: str) -> str:
         last_error = None
@@ -151,17 +221,13 @@ class GeminiClient:
 
             except self.genai_errors.ClientError as error:
                 last_error = error
-                logger.warning(
-                    f"Gemini client error on attempt {attempt + 1}: {error}"
-                )
+                logger.warning(f"Gemini client error on attempt {attempt + 1}: {error}")
                 if attempt < self.max_retries - 1:
                     self._sleep_with_backoff(attempt)
 
             except self.genai_errors.ServerError as error:
                 last_error = error
-                logger.warning(
-                    f"Gemini server error on attempt {attempt + 1}: {error}"
-                )
+                logger.warning(f"Gemini server error on attempt {attempt + 1}: {error}")
                 if attempt < self.max_retries - 1:
                     self._sleep_with_backoff(attempt)
 
@@ -186,7 +252,6 @@ class GeminiClient:
         )
 
     def _sleep_with_backoff(self, attempt: int) -> None:
-        delay = self.initial_retry_delay * (2 ** attempt)
+        delay = self.initial_retry_delay * (2**attempt)
         logger.debug(f"Backing off for {delay:.1f} seconds before retry")
         time.sleep(delay)
-

@@ -132,6 +132,62 @@ class MainCLITest(unittest.TestCase):
                 result.stdout,
             )
 
+    def test_output_requires_gemini(self) -> None:
+        with tempfile.NamedTemporaryFile(suffix=".md") as tmpfile:
+            result = subprocess.run(
+                [
+                    "python3",
+                    str(SCRIPT),
+                    tmpfile.name,
+                    "--output",
+                    "md",
+                ],
+                capture_output=True,
+                text=True,
+            )
+
+            self.assertEqual(result.returncode, 1)
+            self.assertIn(
+                "--output requires flag --gemini",
+                result.stdout,
+            )
+
+    def test_invalid_output_value(self) -> None:
+        with tempfile.NamedTemporaryFile(suffix=".md") as tmpfile:
+            result = subprocess.run(
+                [
+                    "python3",
+                    str(SCRIPT),
+                    tmpfile.name,
+                    "--gemini",
+                    "--output",
+                    "invalid",
+                ],
+                capture_output=True,
+                text=True,
+            )
+
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("invalid", result.stderr.lower())
+
+    def test_gemini_accepts_markdown_output(self) -> None:
+        with tempfile.NamedTemporaryFile(suffix=".md") as tmpfile:
+            result = subprocess.run(
+                [
+                    "python3",
+                    str(SCRIPT),
+                    tmpfile.name,
+                    "--gemini",
+                    "--output",
+                    "md",
+                ],
+                capture_output=True,
+                text=True,
+            )
+
+            self.assertNotIn("--output requires flag --gemini", result.stdout)
+            self.assertNotIn("invalid choice", result.stderr.lower())
+
     def test_invalid_model_value(self) -> None:
         with tempfile.NamedTemporaryFile(suffix=".md") as tmpfile:
             result = subprocess.run(

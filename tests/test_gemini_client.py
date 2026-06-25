@@ -1,17 +1,9 @@
 import os
-import time
 import unittest
 from unittest import mock
 
-from google.genai import errors as genai_errors
-
-from docalyzer.gemini_client import GeminiAPIError, GeminiClient
-
-from docalyzer.gemini_client import (
-    GeminiAPIError,
-    GeminiClient,
-    DEFAULT_MODEL,
-)
+from docalyzer.gemini_client import DEFAULT_MODEL, GeminiAPIError, GeminiClient
+from docalyzer.outupt_enum import OutputEnum
 
 
 class TestGeminiClient(unittest.TestCase):
@@ -57,8 +49,60 @@ class TestGeminiClient(unittest.TestCase):
         self.assertEqual(result, "Summary of the text.")
         mock_genai_client.return_value.models.generate_content.assert_called_once()
 
+    def test_format_request_plain_includes_plain_text_rules(self) -> None:
+        client = GeminiClient(api_key=self.api_key)
+
+        prompt = client._format_request(
+            "This is a long text.", OutputEnum.PLAIN, max_sentences=2
+        )
+
+        self.assertIn("professional plain text format", prompt)
+        self.assertIn("do not use Markdown syntax or JSON", prompt)
+        self.assertIn("no more than 2 sentences", prompt)
+        self.assertIn("The output format must be txt", prompt)
+        self.assertIn("Text:\n\nThis is a long text.", prompt)
+
+    def test_format_request_markdown_includes_markdown_rules(self) -> None:
+        client = GeminiClient(api_key=self.api_key)
+
+        prompt = client._format_request(
+            "This is a long text.", OutputEnum.MARKDOWN, max_sentences=3
+        )
+
+        self.assertIn("professional Markdown format", prompt)
+        self.assertIn("proper Markdown headers and bullet points", prompt)
+        self.assertIn("no more than 3 sentences", prompt)
+        self.assertIn("The output format must be md", prompt)
+
+    def test_format_request_json_includes_json_schema_rules(self) -> None:
+        client = GeminiClient(api_key=self.api_key)
+
+        prompt = client._format_request(
+            "This is a long text.", OutputEnum.JSON, max_sentences=4
+        )
+
+        self.assertIn("Return only valid JSON", prompt)
+        self.assertIn("Use snake_case for all keys", prompt)
+        self.assertIn("document_title", prompt)
+        self.assertIn("short_description", prompt)
+        self.assertIn("short_summary", prompt)
+        self.assertIn("full_summary", prompt)
+        self.assertIn("maximum of 4 sentences", prompt)
+
+    def test_format_request_unknown_output_falls_back_to_plain_text(self) -> None:
+        client = GeminiClient(api_key=self.api_key)
+
+        with mock.patch("builtins.print") as mock_print:
+            prompt = client._format_request("This is a long text.", "yaml", 2)
+
+        self.assertIn("professional plain text format", prompt)
+        self.assertIn("If the requested format is unknown", prompt)
+        mock_print.assert_called_once()
+
     @mock.patch("docalyzer.gemini_client.genai.Client")
-    def test_summarize_raises_on_missing_text(self, mock_genai_client: mock.Mock) -> None:
+    def test_summarize_raises_on_missing_text(
+        self, mock_genai_client: mock.Mock
+    ) -> None:
         mock_response = mock.Mock(spec=[])
         mock_genai_client.return_value.models.generate_content.return_value = (
             mock_response
@@ -191,7 +235,6 @@ class TestGeminiClient(unittest.TestCase):
         client = GeminiClient.from_env(max_retries=3)
         self.assertEqual(client.max_retries, 5)
 
-
     @mock.patch.dict(
         os.environ,
         {
@@ -211,9 +254,7 @@ class TestGeminiClient(unittest.TestCase):
         },
         clear=True,
     )
-    def test_from_env_uses_default_model(
-        self, mock_load_dotenv: mock.Mock
-    ) -> None:
+    def test_from_env_uses_default_model(self, mock_load_dotenv: mock.Mock) -> None:
         client = GeminiClient.from_env()
 
         self.assertEqual(client.model, DEFAULT_MODEL)
