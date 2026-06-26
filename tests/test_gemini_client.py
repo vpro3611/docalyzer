@@ -1,5 +1,7 @@
 import os
+import tempfile
 import unittest
+from pathlib import Path
 from unittest import mock
 
 from docalyzer.gemini_client import DEFAULT_MODEL, GeminiAPIError, GeminiClient
@@ -274,6 +276,101 @@ class TestGeminiClient(unittest.TestCase):
         actual = [call.args[0] for call in mock_sleep.call_args_list]
 
         self.assertEqual(actual, expected)
+
+    def test_write_to_file_creates_parent_directories_and_writes_content(self) -> None:
+        client = GeminiClient(api_key=self.api_key)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            output_path = Path(tmpdir) / "nested" / "summary"
+            client._write_to_file("Saved summary", output_path, OutputEnum.MARKDOWN)
+
+            saved_path = output_path.with_suffix(".md")
+            self.assertTrue(saved_path.exists())
+            self.assertEqual(saved_path.read_text(encoding="utf-8"), "Saved summary")
+
+    def test_write_to_file_rejects_mismatched_extension(self) -> None:
+        client = GeminiClient(api_key=self.api_key)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            output_path = Path(tmpdir) / "summary.json"
+            with self.assertRaises(ValueError) as ctx:
+                client._write_to_file("Saved summary", output_path, OutputEnum.PLAIN)
+
+            self.assertIn("does not match requested format", str(ctx.exception))
+
+    def test_write_to_file_strips_json_fences_and_pretty_prints_json(self) -> None:
+        client = GeminiClient(api_key=self.api_key)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            output_path = Path(tmpdir) / "summary.json"
+            client._write_to_file(
+                '```json\n{"document_title":"","full_summary":"hello"}\n```',
+                output_path,
+                OutputEnum.JSON,
+            )
+
+            saved_text = output_path.read_text(encoding="utf-8")
+            self.assertNotIn("```", saved_text)
+            self.assertIn('  "document_title": ""', saved_text)
+            self.assertIn('  "full_summary": "hello"', saved_text)
+            self.assertTrue(saved_text.endswith("\n"))
+
+    def test_write_to_file_pretty_prints_unfenced_json(self) -> None:
+        client = GeminiClient(api_key=self.api_key)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            output_path = Path(tmpdir) / "summary.json"
+            client._write_to_file(
+                '{"document_title":"Doc","full_summary":"hello"}',
+                output_path,
+                OutputEnum.JSON,
+            )
+
+            saved_text = output_path.read_text(encoding="utf-8")
+            self.assertIn('  "document_title": "Doc"', saved_text)
+            self.assertIn('  "full_summary": "hello"', saved_text)
+            self.assertTrue(saved_text.endswith("\n"))
+
+    def test_write_to_file_keeps_invalid_json_content_without_fences(self) -> None:
+        client = GeminiClient(api_key=self.api_key)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            output_path = Path(tmpdir) / "summary.json"
+            client._write_to_file(
+                '{"document_title": invalid json}',
+                output_path,
+                OutputEnum.JSON,
+            )
+
+            saved_text = output_path.read_text(encoding="utf-8")
+            self.assertEqual(saved_text, '{"document_title": invalid json}')
+
+    @mock.patch("docalyzer.gemini_client.genai.Client")
+    def test_summarize_writes_to_file_when_tofile_path_is_provided(
+        self, mock_genai_client: mock.Mock
+    ) -> None:
+        mock_response = mock.Mock()
+        mock_response.text = "Summary of the text."
+        mock_genai_client.return_value.models.generate_content.return_value = (
+            mock_response
+        )
+
+        client = GeminiClient(api_key=self.api_key)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            output_path = Path(tmpdir) / "summary"
+            result = client.summarize(
+                "This is a long text.",
+                output_format=OutputEnum.JSON,
+                tofile_path=output_path,
+            )
+
+            self.assertEqual(result, "Summary of the text.")
+            saved_path = output_path.with_suffix(".json")
+            self.assertTrue(saved_path.exists())
+            self.assertEqual(
+                saved_path.read_text(encoding="utf-8"), "Summary of the text."
+            )
 
 
 if __name__ == "__main__":

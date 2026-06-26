@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+from pathlib import Path
 from typing import Sequence
 
 from docalyzer.gemini_client import DEFAULT_MODEL
@@ -36,6 +37,7 @@ def summarize_long_text(
     max_sentences: int = 5,
     use_gemini: bool = False,
     output_format: OutputEnum = OutputEnum.PLAIN,
+    tofile_path: Path | None = None,
 ) -> str:
     if use_gemini:
         try:
@@ -48,7 +50,10 @@ def summarize_long_text(
 
             client = GeminiClient.from_env(model=actual_model)
             return client.summarize(
-                text, max_sentences=max_sentences, output_format=output_format
+                text,
+                max_sentences=max_sentences,
+                output_format=output_format,
+                tofile_path=tofile_path,
             )
         except ImportError as error:
             return f"Gemini summarization failed: {error}"

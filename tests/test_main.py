@@ -152,6 +152,80 @@ class MainCLITest(unittest.TestCase):
                 result.stdout,
             )
 
+    def test_default_output_plain_does_not_require_gemini(self) -> None:
+        with tempfile.NamedTemporaryFile(
+            suffix=".md", mode="w", encoding="utf-8"
+        ) as tmpfile:
+            tmpfile.write("Sentence one. Sentence two. Sentence three.")
+            tmpfile.flush()
+
+            result = subprocess.run(
+                [
+                    "python3",
+                    str(SCRIPT),
+                    tmpfile.name,
+                ],
+                capture_output=True,
+                text=True,
+            )
+
+            self.assertNotIn("--output requires flag --gemini", result.stdout)
+
+    def test_tofile_requires_gemini(self) -> None:
+        with tempfile.NamedTemporaryFile(suffix=".md") as tmpfile:
+            result = subprocess.run(
+                [
+                    "python3",
+                    str(SCRIPT),
+                    tmpfile.name,
+                    "--tofile",
+                    "summary.md",
+                ],
+                capture_output=True,
+                text=True,
+            )
+
+            self.assertEqual(result.returncode, 1)
+            self.assertIn("--tofile requires flag --gemini", result.stdout)
+
+    def test_tofile_with_gemini_is_allowed_without_explicit_output(self) -> None:
+        with tempfile.NamedTemporaryFile(suffix=".md") as tmpfile:
+            result = subprocess.run(
+                [
+                    "python3",
+                    str(SCRIPT),
+                    tmpfile.name,
+                    "--gemini",
+                    "--tofile",
+                    "summary.txt",
+                ],
+                capture_output=True,
+                text=True,
+            )
+
+            self.assertNotIn("--tofile requires flag --output", result.stdout)
+            self.assertNotIn("--tofile requires flag --gemini", result.stdout)
+
+    def test_tofile_with_default_output_does_not_trigger_output_requires_gemini(
+        self,
+    ) -> None:
+        with tempfile.NamedTemporaryFile(suffix=".md") as tmpfile:
+            result = subprocess.run(
+                [
+                    "python3",
+                    str(SCRIPT),
+                    tmpfile.name,
+                    "--tofile",
+                    "summary.txt",
+                ],
+                capture_output=True,
+                text=True,
+            )
+
+            self.assertEqual(result.returncode, 1)
+            self.assertIn("--tofile requires flag --gemini", result.stdout)
+            self.assertNotIn("--output requires flag --gemini", result.stdout)
+
     def test_invalid_output_value(self) -> None:
         with tempfile.NamedTemporaryFile(suffix=".md") as tmpfile:
             result = subprocess.run(

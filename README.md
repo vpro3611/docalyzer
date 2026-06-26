@@ -12,7 +12,9 @@ Docalyzer is a Python CLI tool that intelligently summarizes documents and code 
 - **Production-ready**: Error handling with exponential backoff retries, comprehensive logging
 - **Configurable**: Customize Gemini model effort, summary length, and output format via CLI flags or environment variables
 - **Structured AI output**: Gemini summaries can be requested as plain text, Markdown, or JSON
-- **Fully tested**: Unit tests covering CLI validation, model selection, output formatting, summarization, and Gemini retry handling
+- **Save summaries to disk**: Gemini output can be written to a user-provided path with `--tofile`
+- **JSON cleanup on save**: Saved JSON output is normalized by stripping Markdown fences and pretty-printing valid JSON
+- **Fully tested**: Unit tests covering CLI validation, model selection, output formatting, file output, summarization, and Gemini retry handling
 
 ##  Supported File Formats
 
@@ -78,6 +80,21 @@ docalyzer path/to/document.pdf --gemini --output md
 docalyzer path/to/document.pdf --gemini --output json --sentences 5
 ```
 
+**Save Gemini output to a file (default plain text):**
+```bash
+docalyzer path/to/document.pdf --gemini --tofile summaries/document_summary
+```
+
+**Save Gemini Markdown output to a file:**
+```bash
+docalyzer path/to/document.pdf --gemini --output md --tofile summaries/document_summary.md
+```
+
+**Save Gemini JSON output to a file:**
+```bash
+docalyzer path/to/document.pdf --gemini --output json --tofile summaries/document_summary.json
+```
+
 ##  Usage
 
 ### Basic Usage
@@ -93,7 +110,8 @@ docalyzer <filepath> [OPTIONS]
 | `--sentences` | int | 5 | Maximum number of sentences in the Gemini summary (`1-250`, requires `--gemini`) |
 | `--gemini` | flag | False | Use Google Gemini API for summarization |
 | `--model` | `low \| mid \| high` | `mid` | Gemini effort level to use for AI summarization (requires `--gemini`) |
-| `--output` | `txt \| md \| json` | `txt` | Output format for Gemini summaries (requires `--gemini`) |
+| `--output` | `txt \| md \| json` | `txt` | Output format. `md` and `json` require `--gemini`; default `txt` is used otherwise |
+| `--tofile` | path | `None` | Save Gemini output to the provided file path (requires `--gemini`) |
 
 ### Output Formats
 
@@ -106,9 +124,14 @@ When using `--gemini`, you can control the LLM response format with `--output`:
 | JSON | `json` | Structured JSON response with `document_title`, `short_description`, `short_summary`, and `full_summary` |
 
 **Notes**:
-- `--output` is valid only together with `--gemini`
+- `--tofile` works only together with `--gemini`
+- `--output md` and `--output json` require `--gemini`
+- Default output is `txt`
+- If `--tofile` is used without a file extension, Docalyzer appends one based on the selected output format
+- If `--tofile` includes an extension, it must match the selected output format
 - Local summarization ignores output formatting and returns plain text
 - For JSON output, the prompt requests snake_case keys and a fixed response structure
+- Saved JSON output is cleaned before writing: Markdown code fences are removed and valid JSON is pretty-printed with indentation
 
 ### Model Effort Levels
 
@@ -141,8 +164,14 @@ docalyzer README.md --gemini --output md
 # Request structured JSON output
 docalyzer report.pdf --gemini --output json --sentences 5
 
-# Combine Gemini, model effort, sentence count, and output format
-docalyzer research.pdf --gemini --model low --sentences 7 --output md
+# Save default Gemini text output to a file
+docalyzer report.pdf --gemini --tofile outputs/report_summary
+
+# Save Markdown output to a file
+docalyzer research.pdf --gemini --model low --sentences 7 --output md --tofile outputs/research_summary.md
+
+# Save cleaned, pretty-printed JSON output to a file
+docalyzer report.pdf --gemini --output json --tofile outputs/report_summary.json
 
 # Summarize source code
 docalyzer src/main.py --gemini
@@ -174,10 +203,13 @@ For Gemini model selection, the effective order is:
 2. `GEMINI_MODEL`
 3. Built-in default model
 
-For output formatting, the effective behavior is:
-1. `--output txt|md|json` when using `--gemini`
-2. Built-in default `txt`
-3. Local summarization always returns plain text
+For output formatting and file saving, the effective behavior is:
+1. `--output txt|md|json` selects the requested output format
+2. Built-in default output is `txt`
+3. `--output md|json` requires `--gemini`
+4. `--tofile <path>` requires `--gemini`
+5. If `--tofile` has no extension, one is appended from the selected format
+6. Local summarization always returns plain text
 
 ### Local Summarization
 
@@ -185,7 +217,7 @@ When not using `--gemini`, the tool chunks your document and processes it locall
 - **Chunk size**: 2000 characters
 - **Chunks per summary**: 2 sentences each
 - **Final output**: Combined from all chunks
-- **CLI note**: `--sentences`, `--model`, and `--output` apply only to Gemini summarization
+- **CLI note**: `--sentences` and `--model` apply only to Gemini summarization; `--output md|json` and `--tofile` also require Gemini
 
 ##  Installation & Development
 
@@ -235,6 +267,7 @@ The test suite includes:
 - Gemini client error handling and retry logic
 - CLI argument parsing and validation
 - Output format prompt generation and fallback behavior
+- File output behavior, including extension handling and JSON normalization
 - Integration tests for end-to-end workflows
 
 ##  Error Handling
@@ -309,4 +342,4 @@ Contributions are welcome! Areas for enhancement:
 
 ---
 
-**Version**: 1.0.0 | **Last Updated**: 2026-06-25
+**Version**: 1.0.0 | **Last Updated**: 2026-06-26

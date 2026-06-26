@@ -44,6 +44,12 @@ def build_parser() -> argparse.ArgumentParser:
         default=OutputEnum.PLAIN,
         help="Output format for the summary. Available: txt, md, json",
     )
+    parser.add_argument(
+        "--tofile",
+        type=Path,
+        default=None,
+        help="Path to the output file, where the summary will be saved.",
+    )
     return parser
 
 
@@ -73,11 +79,17 @@ def main() -> int:
         print("--model requires flag --gemini and only works with AI summarizer")
         return 1
 
-    if args.output is not None and not args.gemini:
+    if args.tofile is not None and not args.gemini:
+        print("--tofile requires flag --gemini and only works with AI summarizer")
+        return 1
+
+    if args.output != OutputEnum.PLAIN and not args.gemini:
         print("--output requires flag --gemini and only works with AI summarizer")
         return 1
 
-    output: OutputEnum = OutputEnum.PLAIN if args.output is None else args.output
+    tofile_path: Path | None = args.tofile if args.tofile is not None else None
+
+    output: OutputEnum = args.output
 
     model: ModelEnum | None = None
 
@@ -92,6 +104,9 @@ def main() -> int:
         print(f"Max sentences output: {max_sentences}")
         print(f"Model effort: {model}")
         print(f"Output format: {output}")
+        print(
+            f"Output file: {tofile_path if tofile_path is not None else 'No output file specified, not saved'}"
+        )
 
     try:
         raw_text = load_file(path)
@@ -109,6 +124,7 @@ def main() -> int:
         max_sentences=max_sentences,
         use_gemini=args.gemini,
         output_format=output,
+        tofile_path=tofile_path,
     )
 
     print("\n=== Summary ===\n")
