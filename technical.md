@@ -55,7 +55,8 @@ def main() -> int:
 - `--sentences` (optional, default 5): Gemini summary length, valid only with `--gemini`
 - `--gemini` (optional flag): Use AI summarization
 - `--model` (optional, default `mid`): Gemini effort level (`low`, `mid`, `high`), valid only with `--gemini`
-- `--output` (optional, default `txt`): Gemini output format (`txt`, `md`, `json`), valid only with `--gemini`
+- `--output` (optional, default `txt`): Output format (`txt`, `md`, `json`); non-default Gemini formats require `--gemini`
+- `--tofile` (optional): Save Gemini output to a user-provided file path, valid only with `--gemini`
 
 **Return codes**:
 - `0`: Success
@@ -71,7 +72,8 @@ def main() -> int:
 **Validation rules**:
 - `--sentences` requires `--gemini`
 - `--model` requires `--gemini`
-- `--output` requires `--gemini`
+- `--output md|json` requires `--gemini`
+- `--tofile` requires `--gemini`
 - `--sentences` must be between `1` and `250`
 
 ### 2. Summarizer Module (`src/docalyzer/summarizer.py`)
@@ -89,6 +91,7 @@ def summarize_long_text(
     max_sentences: int = 5,
     use_gemini: bool = False,
     output_format: OutputEnum = OutputEnum.PLAIN,
+    tofile_path: Path | None = None,
 ) -> str:
     """Route to Gemini API or local chunking"""
 ```
@@ -106,7 +109,7 @@ def summarize_long_text(
 **Gemini Integration**:
 - Delegates to `GeminiClient` for API calls
 - Resolves user-facing effort levels through `MODEL_MAP`
-- Passes `output_format` through to the Gemini request builder
+- Passes `output_format` and optional `tofile_path` through to the Gemini client
 - Catches `GeminiAPIError` and `ValueError`
 - Returns error string instead of raising (graceful degradation)
 
@@ -115,7 +118,7 @@ def summarize_long_text(
 2. CLI parses `--output` into `OutputEnum`
 3. `summarize_long_text()` converts the selected model enum into a concrete Gemini model name
 4. `GeminiClient.from_env(model=...)` receives the resolved model
-5. `GeminiClient.summarize(..., output_format=...)` receives the selected output format
+5. `GeminiClient.summarize(..., output_format=..., tofile_path=...)` receives the selected output format and optional save path
 6. If no CLI effort is provided, the summarizer falls back to `DEFAULT_MODEL`
 7. If no CLI output is provided, the system defaults to `OutputEnum.PLAIN`
 
@@ -183,6 +186,7 @@ class GeminiClient:
         text: str,
         max_sentences: int = 5,
         output_format: OutputEnum = OutputEnum.PLAIN,
+        tofile_path: Path | None = None,
     ) -> str
 ```
 
@@ -194,6 +198,15 @@ class GeminiClient:
 - Markdown prompts request headers, bullet points, and a professional structure
 - JSON prompts request a strict response shape with snake_case keys
 - Unknown output values fall back defensively to plain text prompt instructions
+
+#### File output and normalization
+- When `tofile_path` is provided, Gemini output is written to disk after generation
+- If the target path has no extension, one is appended from the selected `OutputEnum`
+- If the target path already has an extension, it must match the selected output format
+- For `json` output, saved content is normalized before writing:
+  - surrounding Markdown fences such as ```json ... ``` are removed
+  - valid JSON is parsed and pretty-printed with indentation
+  - invalid JSON is preserved as cleaned raw text rather than crashing the CLI
 
 #### Environment Loading
 - Reads from `.env` file or `os.environ`
@@ -253,6 +266,8 @@ Requested rules:
 - `short_description` should contain 3 sentences
 - `short_summary` should contain 2-3 sentences
 - `full_summary` should contain at most the user-provided sentence limit
+
+When saving JSON to disk, the implementation also normalizes the model response to improve usability in editors and diffs.
 
 #### Design Tradeoffs
 
@@ -338,9 +353,10 @@ tests/
 **Current coverage areas**:
 - File loader behavior for core text-based formats and error paths
 - Gemini client environment loading, retry logic, and failure handling
-- CLI argument validation for `--gemini`, `--sentences`, and `--model`
+- CLI argument validation for `--gemini`, `--sentences`, `--model`, `--output`, and `--tofile`
 - Model effort mapping stability
 - Summarizer routing for local vs. Gemini execution
+- File output behavior, including extension validation and JSON normalization
 
 **Mocking Strategy**:
 ```python
@@ -435,7 +451,7 @@ GEMINI_API_KEY=sk_live_xxxxxxxxxxxxx
 - [x] `--model` CLI flag for runtime Gemini model-effort selection
 - [x] GitHub Actions CI pipeline
 - [x] `--output` flag (JSON, md, plain text)
-- [ ] `--tofile` flag (to export summary to a separate user-indicated file) (JSON, md, txt) 
+- [x] `--tofile` flag (to export summary to a separate user-indicated file) (JSON, md, txt) 
 
 ##  Development Workflow
 
@@ -528,4 +544,4 @@ docalyzer document.pdf --gemini
 
 ---
 
-**Version**: 1.0.0 | **Last Updated**: 2026-06-24 | **Audience**: Python developers and contributors
+**Version**: 1.0.0 | **Last Updated**: 2026-06-26 | **Audience**: Python developers and contributors
