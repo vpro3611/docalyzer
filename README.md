@@ -37,8 +37,14 @@ Docalyzer is a Python CLI tool that intelligently summarizes documents and code 
 
 ### 1. Install
 
+**For local development:**
 ```bash
 pip install -e .
+```
+
+**For CLI-style isolated install (recommended for end users):**
+```bash
+pipx install .
 ```
 
 ### 2. Configure Gemini API (Optional)
@@ -250,6 +256,26 @@ python3 -m unittest discover tests -v
 pip install -r requirements.txt
 ```
 
+### Build Release Artifacts
+
+To build a distributable wheel and source archive for GitHub Releases:
+
+```bash
+python3 -m pip install build
+python3 -m build
+```
+
+This produces artifacts in `dist/`, typically:
+- `docalyzer-<version>-py3-none-any.whl`
+- `docalyzer-<version>.tar.gz`
+
+You can then validate the built CLI locally:
+
+```bash
+python3 -m pip install --force-reinstall dist/docalyzer-<version>-py3-none-any.whl
+docalyzer --help
+```
+
 ##  Testing
 
 Run the test suite:
@@ -339,6 +365,13 @@ Contributions are welcome! Areas for enhancement:
 ##  Documentation
 
 - **[technical.md](technical.md)** - Architecture, design decisions, and implementation details for developers
+
+##  Release Notes
+
+For a Phase 1 release, Docalyzer is distributed as a standard Python CLI package:
+- installable from source with `pip install .` or `pipx install .`
+- buildable into a wheel and source archive with `python3 -m build`
+- suitable for attaching `.whl` and `.tar.gz` artifacts to GitHub Releases
 
 ---
 

@@ -1,18 +1,49 @@
 [build-system]
-requires = ["setuptools>=61.0"]
+requires = ["setuptools>=61.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "docalyzer"
 version = "1.0.0"
-description = "File summarizer CLI for document and code files."
+description = "AI-powered CLI summarizer for documents and source code."
+readme = "README.md"
 requires-python = ">=3.10"
+keywords = ["cli", "summarizer", "documents", "gemini", "ai"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "Intended Audience :: End Users/Desktop",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Text Processing",
+    "Topic :: Utilities",
+]
+dependencies = [
+    "python-docx>=0.8.11",
+    "openpyxl>=3.1.2",
+    "python-pptx>=0.6.21",
+    "PyPDF2>=3.0.0",
+    "beautifulsoup4>=4.12.2",
+    "pyyaml>=6.0",
+    "google-genai>=0.3.0",
+    "python-dotenv>=1.0.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/vpro3611/docalyzer"
+Repository = "https://github.com/vpro3611/docalyzer"
+Issues = "https://github.com/vpro3611/docalyzer/issues"
+Documentation = "https://github.com/vpro3611/docalyzer/blob/master/README.md"
+
+[project.scripts]
+docalyzer = "docalyzer.main:main"
 
 [tool.setuptools]
 package-dir = {"" = "src"}
 
 [tool.setuptools.packages.find]
 where = ["src"]
-
-[project.scripts]
-docalyzer = "docalyzer.main:main"
