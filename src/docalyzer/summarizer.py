@@ -38,6 +38,8 @@ def summarize_long_text(
     use_gemini: bool = False,
     output_format: OutputEnum = OutputEnum.PLAIN,
     tofile_path: Path | None = None,
+    description_level: int = 2,
+    summary_level: int = 2,
 ) -> str:
     if use_gemini:
         try:
@@ -54,6 +56,8 @@ def summarize_long_text(
                 max_sentences=max_sentences,
                 output_format=output_format,
                 tofile_path=tofile_path,
+                description_level=description_level,
+                summary_level=summary_level,
             )
         except ImportError as error:
             return f"Gemini summarization failed: {error}"
