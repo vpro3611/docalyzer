@@ -4,38 +4,42 @@
 
 ##  Architecture Overview
 
-Docalyzer follows a modular, layered architecture with clear separation of concerns:
+Docalyzer now uses a provider-based AI architecture while preserving local summarization as the default path.
 
 ```mermaid
 graph TD
     CLI["CLI Layer<br/>main.py"]
     SUM["Summarization Layer<br/>summarizer.py"]
-    GEM["LLM Integration<br/>gemini_client.py"]
+    FACTORY["Client Factory<br/>ai_client_factory.py"]
+    EXEC["AI Executor<br/>ai_executor.py"]
+    PROMPT["Prompt Builder<br/>prompt_builder.py"]
+    WRITER["Output Writer<br/>output_writer.py"]
+    GEM["Gemini Client<br/>gemini_client.py"]
+    OAI["OpenAI Client<br/>openai_client.py"]
     FILE["File Loading Layer<br/>file_loaders.py"]
-    
+
     CLI -->|Loads| FILE
     CLI -->|Summarizes| SUM
-    SUM -->|Optional| GEM
-    SUM -->|Local chunking| SUM
-    
-    GEM -->|HTTP Request| GEMINI["Google Gemini API<br/>with Retry Logic"]
-    
-    style CLI fill:#e1f5ff
-    style SUM fill:#f3e5f5
-    style GEM fill:#e8f5e9
-    style FILE fill:#fff3e0
-    style GEMINI fill:#ffe0b2
+    SUM -->|Local mode| SUM
+    SUM -->|AI mode| FACTORY
+    FACTORY --> GEM
+    FACTORY --> OAI
+    SUM --> EXEC
+    EXEC --> PROMPT
+    EXEC --> WRITER
+    EXEC --> GEM
+    EXEC --> OAI
 ```
 
 ### Layer Responsibilities
 
-1. **CLI Layer** (`main.py`): Argument parsing, user interface, orchestration
-2. **Summarization Layer** (`summarizer.py`): Algorithm selection, local vs. AI summarization
-3. **LLM Integration** (`gemini_client.py`): API abstraction, prompt construction, error handling, retry logic
-4. **Model Selection** (`model_enum.py`): User-facing Gemini effort presets mapped to concrete models
-5. **Description Level Selection** (`description_level.py`): User-facing description-depth presets mapped to prompt instructions
-6. **Summary Level Selection** (`summary_level.py`): User-facing summary-richness presets mapped to prompt instructions
-7. **Output Selection** (`outupt_enum.py`): User-facing Gemini output format selection
+1. **CLI Layer** (`main.py`): Argument parsing, validation, provider resolution, orchestration
+2. **Summarization Layer** (`summarizer.py`): Local fallback vs. AI routing
+3. **Client Factory** (`ai_client_factory.py`): Provider-specific client creation and model resolution
+4. **AI Executor** (`ai_executor.py`): Provider-neutral AI request execution
+5. **Prompt Builder** (`prompt_builder.py`): Shared prompt construction for all providers
+6. **Output Writer** (`output_writer.py`): Shared file output and JSON normalization
+7. **Provider Clients** (`gemini_client.py`, `openai_client.py`): SDK integration, retries, provider error translation
 8. **File Loading** (`file_loaders.py`): Multi-format document parsing
 
 ##  Module Design
@@ -47,42 +51,41 @@ graph TD
 ```python
 def build_parser() -> argparse.ArgumentParser:
     """Create CLI argument parser"""
-    
+
+
 def main() -> int:
     """Parse args → Load file → Summarize → Print output"""
 ```
 
 **CLI Arguments**:
 - `path` (required): File to summarize
-- `--sentences` (optional, default 5): Gemini summary length, valid only with `--gemini`
-- `--gemini` (optional flag): Use AI summarization
-- `--model` (optional, default `mid`): Gemini effort level (`low`, `mid`, `high`), valid only with `--gemini`
-- `--desc_level` (optional, default `2`): Description depth (`1`, `2`, `3`), valid only with `--gemini`
-- `--sum_level` (optional, default `2`): Summary richness (`1`, `2`, `3`), valid only with `--gemini`
-- `--output` (optional, default `txt`): Output format (`txt`, `md`, `json`); non-default Gemini formats require `--gemini`
-- `--tofile` (optional): Save Gemini output to a user-provided file path, valid only with `--gemini`
+- `--provider` (optional): AI provider (`gemini`, `openai`)
+- `--gemini` (optional flag): Deprecated compatibility alias for `--provider gemini`
+- `--sentences` (optional, default 5 in AI mode): AI summary length
+- `--model` (optional, default `mid` in AI mode): Provider-neutral effort level (`low`, `mid`, `high`)
+- `--desc_level` (optional, default `2` in AI mode): Description depth (`1`, `2`, `3`)
+- `--sum_level` (optional, default `2` in AI mode): Summary richness (`1`, `2`, `3`)
+- `--output` (optional, default `txt`): Output format (`txt`, `md`, `json`)
+- `--tofile` (optional): Save AI output to a user-provided file path
 
 **Return codes**:
 - `0`: Success
-- `1`: File not found or processing error
+- `1`: Validation, file loading, or summarization error
+- `2`: `argparse` usage error for invalid enum values or malformed CLI input
 
-**Design Decision**: Simple, synchronous CLI using `argparse` for clarity and standard library compatibility.
-
-**Model effort mapping**:
-- `low` → `gemini-2.5-flash-lite`
-- `mid` → `gemini-2.5-flash`
-- `high` → `gemini-2.5-pro`
+**Design Decisions**:
+- No provider selected means local summarization
+- `--provider` enables AI mode
+- `--gemini` is preserved as a backward-compatible alias
+- CLI resolves provider conflicts early before any provider-specific logic runs
+- `main.py` bootstraps the local `src/` path when run directly so `python3 src/docalyzer/main.py ...` and `python3 main_shortcut.py ...` use the same in-repo code instead of a stale installed package copy
 
 **Validation rules**:
-- `--sentences` requires `--gemini`
-- `--model` requires `--gemini`
-- `--desc_level` requires `--gemini`
-- `--sum_level` requires `--gemini`
-- `--output md|json` requires `--gemini`
-- `--tofile` requires `--gemini`
+- `--sentences`, `--model`, `--desc_level`, `--sum_level`, `--tofile`, and non-default AI output formats require AI mode
 - `--sentences` must be between `1` and `250`
 - `--desc_level` must be between `1` and `3`
 - `--sum_level` must be between `1` and `3`
+- `--gemini` cannot be combined with a non-Gemini provider
 
 ### 2. Summarizer Module (`src/docalyzer/summarizer.py`)
 
@@ -91,252 +94,244 @@ def main() -> int:
 ```python
 def summarize_text(text: str, max_sentences: int = 5) -> str:
     """Extract sentences from text, return first N"""
-    
+
+
 def summarize_long_text(
     text: str,
     model_kind: ModelEnum | None = None,
     chunk_size: int = 2000,
     max_sentences: int = 5,
     use_gemini: bool = False,
+    provider: ProviderEnum | None = None,
     output_format: OutputEnum = OutputEnum.PLAIN,
     tofile_path: Path | None = None,
     description_level: int = 2,
     summary_level: int = 2,
 ) -> str:
-    """Route to Gemini API or local chunking"""
+    """Route to local summarization or provider-based AI execution"""
 ```
 
 **Local Summarization Algorithm**:
-1. Split text into fixed-size chunks (2000 chars)
+1. Split text into fixed-size chunks (`2000` characters)
 2. Extract sentences from each chunk
-3. Return first N sentences per chunk
-4. Join chunks with double newline
+3. Return the first N sentences per chunk
+4. Join chunk summaries with double newlines
 
-**Tradeoff: Simplicity vs. Quality**
--  Pros: Fast, no dependencies, works offline
--  Cons: Simple sentence extraction, doesn't understand context
+**AI Routing Flow**:
+1. Resolve legacy `use_gemini` into `ProviderEnum.GEMINI` when needed
+2. Build a provider-neutral `SummaryRequest`
+3. Create a provider client through `create_ai_client()`
+4. Execute the request through `AIExecutor`
+5. Return a provider-specific user-facing error string on failure
 
-**Gemini Integration**:
-- Delegates to `GeminiClient` for API calls
-- Resolves user-facing effort levels through `MODEL_MAP`
-- Passes `output_format`, optional `tofile_path`, `description_level`, and `summary_level` through to the Gemini client
-- Catches `GeminiAPIError` and `ValueError`
-- Returns error string instead of raising (graceful degradation)
+**Design Decision**:
+- Keep `use_gemini` temporarily for backward compatibility
+- Make `provider` the canonical internal AI switch
+- Keep local summarization entirely independent from provider integrations
 
-**Model, detail, and output selection flow**:
-1. CLI parses `--model` into `ModelEnum`
-2. CLI validates `--desc_level` and `--sum_level` as integer values from `1` to `3`
-3. CLI parses `--output` into `OutputEnum`
-4. `summarize_long_text()` converts the selected model enum into a concrete Gemini model name
-5. `GeminiClient.from_env(model=...)` receives the resolved model
-6. `GeminiClient.summarize(..., output_format=..., tofile_path=..., description_level=..., summary_level=...)` receives the selected output format, optional save path, and prompt-detail controls
-7. If no CLI effort is provided, the summarizer falls back to `DEFAULT_MODEL`
-8. If no CLI output is provided, the system defaults to `OutputEnum.PLAIN`
-9. If no CLI detail level is provided, both `description_level` and `summary_level` default to `2`
+### 3. Provider Enum Module (`src/docalyzer/provider_enum.py`)
 
-### 3. Model Selection Module (`src/docalyzer/model_enum.py`)
+**Responsibility**: Define the supported AI providers exposed to the CLI and internal factory logic.
 
-**Responsibility**: Keep CLI model selection stable while allowing concrete Gemini models to change internally
+```python
+class ProviderEnum(StrEnum):
+    GEMINI = "gemini"
+    OPENAI = "openai"
+```
+
+**Design Decision**:
+- Use provider names, not model family nicknames, as the CLI contract
+- Expose a `display_name` property for consistent user-facing error messages
+
+### 4. Model Selection Module (`src/docalyzer/model_enum.py`)
+
+**Responsibility**: Keep CLI model selection stable while allowing provider-specific concrete models to vary internally.
 
 ```python
 class ModelEnum(StrEnum):
     LOW = "low"
     MID = "mid"
     HIGH = "high"
-
-MODEL_MAP = {
-    ModelEnum.LOW: "gemini-2.5-flash-lite",
-    ModelEnum.MID: "gemini-2.5-flash",
-    ModelEnum.HIGH: "gemini-2.5-pro",
-}
 ```
 
-**Design Decision**: Introduce a thin enum layer instead of exposing raw Gemini model IDs directly on the CLI.
-- Pros: Stable UX, easier docs, safer future model swaps
-- Cons: One more mapping layer to maintain
+**Gemini mapping**:
+- `low` → `gemini-2.5-flash-lite`
+- `mid` → `gemini-2.5-flash`
+- `high` → `gemini-2.5-pro`
 
-### 4. Output Selection Module (`src/docalyzer/outupt_enum.py`)
+**OpenAI mapping**:
+- `low` → `gpt-4.1-mini`
+- `mid` → `gpt-4.1`
+- `high` → `gpt-5.2`
 
-**Responsibility**: Define user-facing output format values accepted by the CLI and Gemini integration
+**Design Decision**:
+- Keep the CLI provider-neutral with `low|mid|high`
+- Let the factory resolve those effort levels into provider-specific model IDs
+
+### 5. AI Request Types (`src/docalyzer/ai_types.py`)
+
+**Responsibility**: Define provider-neutral request and client contracts.
 
 ```python
-class OutputEnum(StrEnum):
-    PLAIN = "txt"
-    MARKDOWN = "md"
-    JSON = "json"
+@dataclass(slots=True)
+class SummaryRequest:
+    text: str
+    max_sentences: int = 5
+    output_format: OutputEnum = OutputEnum.PLAIN
+    tofile_path: Path | None = None
+    description_level: int = 2
+    summary_level: int = 2
+
+
+class AIClient(Protocol):
+    def summarize_request(self, request: SummaryRequest) -> str:
+        ...
 ```
 
-**Design Decision**: Use a small `StrEnum` so CLI parsing remains strict and the rest of the code can work with explicit output variants.
-- Pros: Clear contract, easy validation, less stringly-typed branching
-- Cons: Adds one more enum module to maintain
+**Design Decision**:
+- Use a dataclass to reduce keyword drift and silent argument mismatches
+- Use a protocol so Gemini and OpenAI can share a common executor path
 
-### 5. Description Level Module (`src/docalyzer/description_level.py`)
+### 6. AI Error Types (`src/docalyzer/ai_errors.py`)
 
-**Responsibility**: Define user-facing presets for how descriptive and explanatory Gemini output should be.
+**Responsibility**: Normalize provider-specific failures into shared app-level categories.
 
 ```python
-DESCRIPTION_LEVEL_TO_PROMPT = {
-    1: "Provide a concise description of the given text.",
-    2: "Provide a detailed description of the given text.",
-    3: "Provide an in-depth and very detailed description of the given text.",
-}
+class AIError(RuntimeError):
+    ...
+
+class AIConfigurationError(ValueError, AIError):
+    ...
+
+class AISummarizationError(AIError):
+    ...
 ```
 
-**Design Decision**: Keep descriptive-depth prompt wording in a dedicated mapping module rather than hardcoding it in the client.
-- Pros: Easier tuning, clearer tests, less prompt duplication
-- Cons: One more small mapping file to maintain
+**Design Decision**:
+- `AIConfigurationError` subclasses `ValueError` to preserve compatibility with older tests and call sites
+- Provider-specific errors such as `GeminiAPIError` and `OpenAIAPIError` subclass `AISummarizationError`
 
-### 6. Summary Level Module (`src/docalyzer/summary_level.py`)
+### 7. Prompt Builder (`src/docalyzer/prompt_builder.py`)
 
-**Responsibility**: Define user-facing presets for how dense and full the summary should be while still respecting the sentence cap.
+**Responsibility**: Build shared prompts for all providers based on output format and detail controls.
+
+**Inputs**:
+- `text`
+- `output_format`
+- `max_sentences`
+- `description_level`
+- `summary_level`
+
+**Behavior**:
+- Builds different prompt bodies for `txt`, `md`, and `json`
+- Applies `DESCRIPTION_LEVEL_TO_PROMPT`
+- Applies `SUMMARY_LEVEL_TO_PROMPT`
+- Preserves the existing JSON response contract
+- Falls back defensively to plain-text instructions for unknown output values
+
+**Design Decision**:
+- Centralize prompt logic outside provider clients so provider behavior stays aligned
+- Avoid prompt drift between Gemini and OpenAI
+
+### 8. Output Writer (`src/docalyzer/output_writer.py`)
+
+**Responsibility**: Provider-neutral output normalization and file writing.
+
+**Key features**:
+- append the selected file extension if the user omits one
+- reject mismatched file extensions
+- normalize JSON by stripping code fences and pretty-printing valid JSON
+- keep invalid JSON as cleaned raw text rather than crashing
+
+**Design Decision**:
+- File output is not provider-specific, so it should not live in provider clients
+
+### 9. AI Executor (`src/docalyzer/ai_executor.py`)
+
+**Responsibility**: Execute provider-neutral `SummaryRequest` instances through any `AIClient` implementation.
 
 ```python
-SUMMARY_LEVEL_TO_PROMPT = {
-    1: "The summary should be concise, but still fit into the sentences cap",
-    2: "The summary should be detailed, but still fit into the sentences cap",
-    3: "The summary should be very detailed and in-depth, but still fit into the sentences cap",
-}
+class AIExecutor:
+    def __init__(self, client: AIClient) -> None:
+        self.client = client
+
+    def summarize(self, request: SummaryRequest) -> str:
+        return self.client.summarize_request(request)
 ```
 
-**Design Decision**: Separate summary-richness controls from descriptive-depth controls so users can independently tune the two concerns.
-- Pros: More expressive CLI, clearer prompt behavior, better testability
-- Cons: Slightly more prompt complexity
+**Design Decision**:
+- Keep orchestration provider-neutral even if the implementation is intentionally lightweight today
+- Preserve an obvious extension point for future provider-neutral behaviors
 
-### 7. Gemini Client Module (`src/docalyzer/gemini_client.py`)
+### 10. AI Client Factory (`src/docalyzer/ai_client_factory.py`)
 
-**Responsibility**: API abstraction, error handling, retry logic
+**Responsibility**: Resolve provider/model combinations and construct the appropriate client.
 
 ```python
-class GeminiClient:
-    def __init__(
-        self,
-        api_key: str,
-        model: str = "gemini-2.5-flash",
-        timeout: int = 30,
-        max_retries: int = 3,
-        initial_retry_delay: float = 1.0
-    )
+def resolve_model_name(
+    provider: ProviderEnum,
+    model_kind: ModelEnum | None = None,
+) -> str:
+    ...
 
-    @classmethod
-    def from_env(
-        cls,
-        model: str = "gemini-2.5-flash",
-        env_path: str | Path | None = None,
-        max_retries: int = 3
-    ) -> "GeminiClient"
 
-    def summarize(
-        self,
-        text: str,
-        max_sentences: int = 5,
-        output_format: OutputEnum = OutputEnum.PLAIN,
-        tofile_path: Path | None = None,
-        description_level: int = 2,
-        summary_level: int = 2,
-    ) -> str
+def create_ai_client(
+    provider: ProviderEnum,
+    model_kind: ModelEnum | None = None,
+) -> AIClient:
+    ...
 ```
 
-**Key Features**:
+**Behavior**:
+- maps `low|mid|high` to provider-specific model IDs
+- returns `GeminiClient.from_env(...)` or `OpenAIClient.from_env(...)`
+- lets provider-specific env defaults apply when no explicit `--model` kind is chosen
+- keeps provider branching centralized in one place
 
-#### Output-aware and detail-aware prompt generation
-- Builds different Gemini prompts for `txt`, `md`, and `json`
-- Applies `description_level` instructions from `DESCRIPTION_LEVEL_TO_PROMPT`
-- Applies `summary_level` instructions from `SUMMARY_LEVEL_TO_PROMPT`
-- Plain text prompts request readable spacing and non-Markdown output
-- Markdown prompts request headers, bullet points, and a professional structure
-- JSON prompts request a strict response shape with snake_case keys
-- Unknown output values fall back defensively to plain text prompt instructions
-- `summary_level` influences how much of the sentence budget Gemini should use, but does not override `max_sentences`
+**Design Decision**:
+- Avoid spreading `if provider == ...` branching across the CLI, summarizer, and executor
 
-#### File output and normalization
-- When `tofile_path` is provided, Gemini output is written to disk after generation
-- If the target path has no extension, one is appended from the selected `OutputEnum`
-- If the target path already has an extension, it must match the selected output format
-- For `json` output, saved content is normalized before writing:
-  - surrounding Markdown fences such as ```json ... ``` are removed
-  - valid JSON is parsed and pretty-printed with indentation
-  - invalid JSON is preserved as cleaned raw text rather than crashing the CLI
+### 11. Gemini Client (`src/docalyzer/gemini_client.py`)
 
-#### Environment Loading
-- Reads from `.env` file or `os.environ`
-- Supports `GEMINI_API_KEY`, `GEMINI_MODEL`, `GEMINI_MAX_RETRIES`
-- Custom implementation if `python-dotenv` not available
-- Falls back gracefully with clear error messages
-- Allows the caller to override the environment model at runtime
+**Responsibility**: Gemini SDK integration, environment loading, retries, and Gemini-specific error translation.
 
-#### Error Classification
+**Key features**:
+- lazy imports for `google-genai`
+- `.env` and environment loading with `GEMINI_API_KEY`, `GEMINI_MODEL`, `GEMINI_MAX_RETRIES`
+- provider-specific retry handling around Gemini errors
+- compatibility methods preserved:
+  - `summarize(...)`
+  - `_format_request(...)`
+  - `_write_to_file(...)`
+  - `_normalize_output_content(...)`
 
-```mermaid
-graph TD
-    A["API Response"] --> B{Error Type?}
-    B -->|Validation: 400, 401| C["GeminiAPIError<br/>No Retry"]
-    B -->|Transient: 5xx, timeout| D["genai_errors<br/>Retry with Backoff"]
-    B -->|Success: 200| E["Return Summary"]
+**Design Decision**:
+- Keep the Gemini-specific client class stable while delegating prompt construction and file writing to shared helpers
 
-    C -->|Immediate failure| F["User Error Message"]
-    D -->|Exponential backoff| G["Retry Loop<br/>Max 3x"]
-    G -->|Success| E
-    G -->|All failed| H["Return Error"]
+### 12. OpenAI Client (`src/docalyzer/openai_client.py`)
 
-    style C fill:#ffcdd2
-    style D fill:#fff9c4
-    style E fill:#c8e6c9
-```
+**Responsibility**: OpenAI SDK integration, environment loading, retries, and OpenAI-specific error translation.
 
-**Retry Strategy**:
-- **Transient errors** (ServerError, ClientError, APIError): Automatic retry
-- **Validation errors** (400, 401): Immediate failure
-- **Exponential backoff**: Delay = `initial_retry_delay * 2^attempt`
-  - Attempt 0: 1.0 second
-  - Attempt 1: 2.0 seconds
-  - Attempt 2: 4.0 seconds
+**Environment variables**:
+- `OPENAI_API_KEY`
+- `OPENAI_MODEL`
+- `OPENAI_MAX_RETRIES`
 
-**Logging**:
-- **DEBUG**: Initialization, API calls, retry attempts
-- **WARNING**: Transient errors before retry
-- **ERROR**: Final failure or validation errors
+**Key features**:
+- lazy import for the `openai` SDK
+- retry support for rate limits, timeouts, connection failures, retryable `429` status errors, and retryable `5xx` API status errors
+- non-retryable `4xx` API status errors are raised immediately as `OpenAIAPIError`
+- response extraction from `response.output_text` with defensive fallbacks to `choices[0].text` and `choices[0].message.content`
+- shared prompt-building and output-writing behavior with Gemini
 
-#### JSON response contract
+**Design Decision**:
+- Match the Gemini contract closely so both providers fit the same executor and request flow
 
-When `--output json` is selected, the prompt asks Gemini to return only valid JSON using this logical structure:
-
-```json
-{
-  "document_title": "",
-  "short_description": "",
-  "short_summary": "",
-  "full_summary": ""
-}
-```
-
-Requested rules:
-- all keys must use `snake_case`
-- `document_title` should be included if applicable
-- `short_description` should contain 3 sentences
-- `short_summary` should contain 2-3 sentences
-- `full_summary` should contain at most the user-provided sentence limit
-- `description_level` changes how explanatory the descriptive fields should be
-- `summary_level` changes how dense and full `full_summary` should be within the sentence cap
-
-When saving JSON to disk, the implementation also normalizes the model response to improve usability in editors and diffs.
-
-#### Design Tradeoffs
-
-| Decision | Rationale | Tradeoff |
-|----------|-----------|----------|
-| Class abstraction | Future model flexibility | Extra complexity |
-| Runtime model override | CLI effort selection should beat `.env` defaults | Slightly more config flow to reason about |
-| Separate description and summary controls | Lets users tune explanation depth independently from summary density | Slightly more prompt complexity |
-| Custom error handling | Distinguish retry-able errors | More code |
-| Exponential backoff | Reduce API server load | Longer wait on failures |
-| selective retries | Don't mask validation bugs | Must classify errors |
-| Logging integration | Production debugging | Performance overhead (minimal) |
-
-### 8. File Loaders Module (`src/docalyzer/file_loaders.py`)
+### 13. File Loaders Module (`src/docalyzer/file_loaders.py`)
 
 **Responsibility**: Multi-format document parsing
 
-**Supported Formats** (18+ types):
+**Supported Formats**:
 
 | Category | Extensions |
 |----------|-----------|
@@ -346,46 +341,23 @@ When saving JSON to disk, the implementation also normalizes the model response 
 | Code | `.py`, `.js`, `.ts`, `.go`, `.java`, `.c`, `.cpp` |
 | Text | `.txt` |
 
-**Loader Pattern**:
-```python
-@register_loader((".pdf",))
-def load_pdf(path: Path) -> str:
-    # Extract text from PDF
-```
-
-**Error Handling**:
-- `UnsupportedFileTypeError`: Unknown extension
-- `MissingDependencyError`: Optional library not installed
-- `FileLoadError`: Base exception for all file loading errors
-
-**Design Decision**: Decorator pattern for extensibility
--  Easy to add new formats
--  Dynamic registration
--  Less explicit than explicit function mapping
-
 ##  Data Flow Diagram
 
 ```mermaid
 graph LR
-    A["User Input<br/>CLI Args"] -->|Validation| B["Parse & Validate"]
+    A["User Input<br/>CLI Args"] -->|Validation| B["Parse & Resolve Provider"]
     B -->|File Path| C["Load File<br/>Detect Format"]
-    C -->|Raw Text| D["Summarize?"]
+    C -->|Raw Text| D{"AI provider selected?"}
 
-    D -->|use_gemini=False| E["Local Algorithm<br/>Chunking"]
-    D -->|use_gemini=True| E1["Resolve Model Effort<br/>low/mid/high"]
-    E1 --> E2["Resolve Detail Controls<br/>desc_level/sum_level"]
-    E2 --> F["Create Gemini Client<br/>from_env(model=...)"]
+    D -->|No| E["Local Algorithm<br/>Chunking"]
+    D -->|Yes| F["Build SummaryRequest"]
+    F --> G["Resolve Provider Client<br/>and Model"]
+    G --> H["Build Shared Prompt"]
+    H --> I["Provider SDK Call<br/>with Retry Logic"]
+    I --> J["Normalize / Save Output"]
 
-    F -->|Config| G["Load .env<br/>& Environment"]
-    G -->|API Key + Model| H["Generate Prompt<br/>with output + detail controls"]
-    H -->|Retry Logic| I["Exponential Backoff"]
-    I -->|Success| J["Parse Response"]
-    I -->|Max Retries| K["Error Message"]
-    
-    E -->|Summary| L["Format Output"]
-    J -->|Summary| L
-    K -->|Error| L
-    L -->|Print| M["User Output"]
+    E --> K["Return Summary"]
+    J --> K
 ```
 
 ##  Testing Strategy
@@ -394,208 +366,48 @@ graph LR
 
 ```
 tests/
+├── test_ai_client_factory.py
+├── test_ai_executor.py
 ├── test_file_loaders.py
 ├── test_gemini_client.py
 ├── test_main.py
 ├── test_model_enum.py
+├── test_openai_client.py
+├── test_shared_ai_components.py
 └── test_summarizer.py
 ```
 
-### Testing Approach
+### Current coverage areas
 
-**Current coverage areas**:
-- File loader behavior for core text-based formats and error paths
-- Gemini client environment loading, retry logic, and failure handling
-- CLI argument validation for `--gemini`, `--sentences`, `--model`, `--desc_level`, `--sum_level`, `--output`, and `--tofile`
-- Model effort mapping stability
-- Description-level and summary-level prompt mapping stability
-- Summarizer routing for local vs. Gemini execution
-- File output behavior, including extension validation and JSON normalization
+- CLI validation for local mode vs. AI provider mode
+- backward-compatible `--gemini` alias handling
+- provider/model resolution through the client factory
+- lightweight executor delegation and runtime protocol compatibility checks
+- shared prompt builder behavior and output writer normalization/file writing
+- summarizer routing for local, Gemini, and OpenAI execution
+- Gemini and OpenAI environment loading and retry behavior
+- OpenAI-specific response extraction fallbacks and retry/non-retry status handling
+- file loader behavior for supported formats and failure cases
 
-**Mocking Strategy**:
-```python
-@patch('google.genai.Client')
-def test_retry_logic(mock_client):
-    # Mock progressive failures
-    mock_instance.generate_content.side_effect = [
-        RuntimeError("Transient error"),
-        RuntimeError("Transient error"),
-        MagicMock(text="Summary..."),  # Success on 3rd attempt
-    ]
-```
+##  Key Design Tradeoffs
 
-**Why No Live API Tests**:
--  Faster (no network latency)
--  Consistent (no API rate limits)
--  Cost-free (no API charges)
--  Reproducible (no external dependencies)
+| Decision | Rationale | Tradeoff |
+|----------|-----------|----------|
+| No provider selected means local mode | Keeps local summarization simple and explicit | AI options need validation gates |
+| Keep `--gemini` as alias | Preserves compatibility while migrating to `--provider` | Temporary CLI redundancy |
+| Shared prompt builder | Prevents provider drift | Slightly more indirection |
+| Shared output writer | Avoids duplicate file handling logic | Provider clients are a little thinner |
+| Provider-neutral request dataclass | Reduces keyword mismatch risk | One more abstraction layer |
+| Factory-based provider creation | Centralizes provider branching | Extra module to maintain |
+| Keep provider clients separate | Allows SDK-specific retry/config logic | More files than a Gemini-only design |
 
-##  Error Handling Patterns
+##  Future Extension Points
 
-### Pattern 1: Validation Errors (No Retry)
+The current architecture intentionally prepares for additional providers without forcing the entire app to become a provider framework.
 
-```python
-if not api_key:
-    raise GeminiAPIError("GEMINI_API_KEY not set")
-    # Client catches as GeminiAPIError → no retry
-```
-
-### Pattern 2: Transient Errors (Retry)
-
-```python
-try:
-    response = client.generate_content(prompt)
-except (genai_errors.ServerError, genai_errors.APIError) as e:
-    # Caught by retry loop → exponential backoff
-    raise RuntimeError(str(e))
-```
-
-### Pattern 3: Graceful Degradation
-
-```python
-def summarize_long_text(..., use_gemini=False):
-    if use_gemini:
-        try:
-            return GeminiClient.from_env(model=resolved_model).summarize(text)
-        except (GeminiAPIError, ValueError) as error:
-            return f"Gemini failed: {error}"  # Return error, don't crash
-```
-
-##  Security Considerations
-
-### API Key Management
-
-```env
-# .gitignored - never commit
-GEMINI_API_KEY=sk_live_xxxxxxxxxxxxx
-```
-
-**Best Practices**:
-1.  Use `.env` file, not hardcoded values
-2.  Add `.env` to `.gitignore`
-3.  Use environment-specific keys in production
-4.  Rotate keys regularly
-5.  Consider secret management tools (GitHub Secrets, HashiCorp Vault)
-
-### Input Validation
-
--  File paths validated before loading
--  Text size limits prevent memory exhaustion
--  Timeout prevents hanging requests
-
-##  Performance Characteristics
-
-| Operation | Time | Notes |
-|-----------|------|-------|
-| Local text load | ~5ms | File I/O only |
-| PDF parsing | ~50-200ms | Depends on size |
-| Local summarization | ~20-100ms | Regex-based, fast |
-| Gemini API call | ~1-3s | Network + processing |
-| Retry with backoff | +1-7s | 3 retries = 1+2+4 seconds |
-
-### Optimization Opportunities
-
-1. **Caching**: Cache summaries by file hash
-2. **Async I/O**: Use `asyncio` for concurrent requests
-3. **Streaming**: Stream large document parsing
-4. **Batch API**: Process multiple files in one API call
-
-##  Future Enhancements
-
-- [x] `--model` CLI flag for runtime Gemini model-effort selection
-- [x] GitHub Actions CI pipeline
-- [x] `--output` flag (JSON, md, plain text)
-- [x] `--tofile` flag (to export summary to a separate user-indicated file) (JSON, md, txt) 
-
-##  Development Workflow
-
-### Adding a New File Format
-
-1. Install parser library: `pip install library-name`
-2. Add to `requirements.txt`
-3. Import in `file_loaders.py` with try/except
-4. Create loader function with `@register_loader` decorator:
-   ```python
-   @register_loader((".ext",))
-   def load_ext(path: Path) -> str:
-       # Extract text
-       return text
-   ```
-5. Add test case
-6. Update README.md with format table
-
-### Adding a New Summarization Model
-
-1. Create abstraction interface in new file `src/docalyzer/llm_client.py`
-2. Implement `BaseLLMClient` with abstract `summarize()` method
-3. Make `GeminiClient` inherit from `BaseLLMClient`
-4. Add new provider client class (e.g., `OpenAIClient`)
-5. Update `summarizer.py` to accept configurable provider
-6. Add tests for new provider
-
-### Debugging
-
-**Enable verbose logging**:
-```python
-import logging
-logging.basicConfig(level=logging.DEBUG)
-
-docalyzer document.pdf --gemini
-```
-
-**Common Issues**:
-- **Missing dependency**: `pip install -r requirements.txt`
-- **API key error**: Check `.env` file and `GEMINI_API_KEY` value
-- **Rate limiting**: Increase `GEMINI_MAX_RETRIES` in `.env`
-
-##  Dependencies & Rationale
-
-| Dependency | Version | Purpose | Rationale |
-|-----------|---------|---------|-----------|
-| `google-genai` | >=0.3.0 | Official Gemini SDK | Official, well-maintained, type-hinted |
-| `python-dotenv` | >=1.0.0 | `.env` file loading | Standard for Python projects |
-| `python-docx` | >=0.8.11 | Word documents | De facto standard, active maintenance |
-| `openpyxl` | >=3.1.2 | Excel spreadsheets | Industry standard, Pandas-compatible |
-| `python-pptx` | >=0.6.21 | PowerPoint files | Most complete PPTX library |
-| `PyPDF2` | >=3.0.0 | PDF parsing | Lightweight, pure Python |
-| `beautifulsoup4` | >=4.12.2 | HTML parsing | Flexible, Pythonic, widely used |
-| `pyyaml` | >=6.0 | YAML parsing | Official YAML library |
-
-**Not Used**:
--  `pytest`: `unittest` is sufficient for small projects
--  `click`: `argparse` is standard library
--  `pydantic`: Over-engineered for current config needs
--  `asyncio`: Synchronous API is simpler for CLI tool
-
-##  Code Quality Standards
-
-### Type Hints
-- All functions have type hints
-- Used by Pylance for IDE support
-- Enables runtime type checking if desired
-
-### Logging
-- DEBUG: Initialization, API calls, state changes
-- WARNING: Transient errors, retries
-- ERROR: Critical failures, validation errors
-- No print() statements in production code
-
-### Error Messages
-- **User-facing**: Clear, actionable, non-technical
-- **Log-facing**: Detailed, includes context, full tracebacks
-
-### Testing
-- 100% coverage of error handling paths
-- No network calls in tests (mocked)
-- Deterministic and reproducible
-- Fast execution (<2 seconds total)
-
----
-
-##  Related Documentation
-
-- **[README.md](README.md)** - User guide, installation, and usage examples
-
----
-
-**Version**: 1.0.0 | **Last Updated**: 2026-06-26 | **Audience**: Python developers and contributors
+Natural next steps:
+- add another provider client that satisfies `AIClient`
+- extend provider-specific model mappings
+- factor out duplicated provider env-loading or base-client behavior if a third provider makes the common shape clearer
+- add provider-specific raw model override flags if needed later
+- add stronger type checking (`mypy` or `pyright`) to guard against future interface drift

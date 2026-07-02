@@ -1,16 +1,17 @@
 from __future__ import annotations
 
-import json
 import logging
 import os
-import re
 import time
 import types
 from pathlib import Path
+from typing import Any
 
-from docalyzer.description_level import DESCRIPTION_LEVEL_TO_PROMPT
+from docalyzer.ai_errors import AIConfigurationError, AISummarizationError
+from docalyzer.ai_types import SummaryRequest
+from docalyzer.output_writer import normalize_output_content, write_output_file
 from docalyzer.outupt_enum import OutputEnum
-from docalyzer.summary_level import SUMMARY_LEVEL_TO_PROMPT
+from docalyzer.prompt_builder import build_summary_prompt
 
 DEFAULT_MODEL: str = "gemini-2.5-flash"
 
@@ -30,7 +31,7 @@ genai_errors = types.SimpleNamespace(
 )
 
 
-def _import_genai() -> tuple[object, object]:
+def _import_genai() -> tuple[Any, Any]:
     global genai, genai_errors
 
     if getattr(genai, "_is_placeholder", False) and genai.Client is not None:
@@ -52,7 +53,7 @@ def _import_genai() -> tuple[object, object]:
     return genai, genai_errors
 
 
-class GeminiAPIError(RuntimeError):
+class GeminiAPIError(AISummarizationError):
     pass
 
 
@@ -111,11 +112,24 @@ class GeminiClient:
         _load_dotenv_file(env_path)
         api_key = os.environ.get("GEMINI_API_KEY")
         if not api_key:
-            raise ValueError("GEMINI_API_KEY is not set in the environment")
+            raise AIConfigurationError("GEMINI_API_KEY is not set in the environment")
         model = model or os.environ.get("GEMINI_MODEL", DEFAULT_MODEL)
         max_retries = int(os.environ.get("GEMINI_MAX_RETRIES", max_retries))
         logger.debug(f"Loaded Gemini config from environment: model={model}")
         return cls(api_key=api_key, model=model, max_retries=max_retries)
+
+    def summarize_request(self, request: SummaryRequest) -> str:
+        prompt: str = self._format_request(
+            request.text,
+            request.output_format,
+            request.max_sentences,
+            request.description_level,
+            request.summary_level,
+        )
+        content: str = self._generate_content_with_retry(prompt)
+        if request.tofile_path is not None:
+            self._write_to_file(content, request.tofile_path, request.output_format)
+        return content
 
     def summarize(
         self,
@@ -126,142 +140,44 @@ class GeminiClient:
         description_level: int = 2,
         summary_level: int = 2,
     ) -> str:
-        prompt: str = self._format_request(
+        return self.summarize_request(
+            SummaryRequest(
+                text=text,
+                max_sentences=max_sentences,
+                output_format=output_format,
+                tofile_path=tofile_path,
+                description_level=description_level,
+                summary_level=summary_level,
+            )
+        )
+
+    def _write_to_file(
+        self, content: str, tofile_path: Path, output_format: OutputEnum
+    ) -> None:
+        write_output_file(content, tofile_path, output_format)
+
+    def _normalize_output_content(self, content: str, output_format: OutputEnum) -> str:
+        return normalize_output_content(content, output_format)
+
+    def _format_request(
+        self,
+        text: str,
+        output_format: OutputEnum | str,
+        max_sentences: int,
+        description_level: int = 2,
+        summary_level: int = 2,
+    ) -> str:
+        if not isinstance(output_format, OutputEnum):
+            print(
+                f"Unknown output format: {output_format} passed. Type: {type(output_format)}"
+            )
+        return build_summary_prompt(
             text,
             output_format,
             max_sentences,
             description_level,
             summary_level,
         )
-        content: str = self._generate_content_with_retry(prompt)
-        if tofile_path is not None:
-            self._write_to_file(content, tofile_path, output_format)
-        return content
-
-    def _write_to_file(
-        self, content: str, tofile_path: Path, output_format: OutputEnum
-    ) -> None:
-        if tofile_path.suffix and tofile_path.suffix != f".{output_format.value}":
-            raise ValueError(
-                f"Output file extension '{tofile_path.suffix}' does not match requested format '{output_format.value}'"
-            )
-
-        if not tofile_path.suffix:
-            tofile_path = tofile_path.with_suffix(f".{output_format.value}")
-
-        normalized_content = self._normalize_output_content(content, output_format)
-
-        tofile_path.parent.mkdir(parents=True, exist_ok=True)
-        tofile_path.write_text(normalized_content, encoding="utf-8")
-        print(f"Summary saved to: {tofile_path}")
-
-    def _normalize_output_content(self, content: str, output_format: OutputEnum) -> str:
-        cleaned_content = content.strip()
-
-        if output_format is not OutputEnum.JSON:
-            return cleaned_content
-
-        fenced_match = re.fullmatch(
-            r"```(?:json)?\s*(.*?)\s*```", cleaned_content, re.DOTALL
-        )
-        if fenced_match is not None:
-            cleaned_content = fenced_match.group(1).strip()
-
-        try:
-            parsed_json = json.loads(cleaned_content)
-        except json.JSONDecodeError:
-            return cleaned_content
-
-        return json.dumps(parsed_json, indent=2, ensure_ascii=False) + "\n"
-
-    def _format_request(
-        self,
-        text: str,
-        output_format: OutputEnum,
-        max_sentences: int,
-        description_level: int = 2,
-        summary_level: int = 2,
-    ) -> str:
-        detail_instruction = DESCRIPTION_LEVEL_TO_PROMPT.get(
-            description_level,
-            DESCRIPTION_LEVEL_TO_PROMPT[2],
-        )
-        summary_instruction = SUMMARY_LEVEL_TO_PROMPT.get(
-            summary_level,
-            SUMMARY_LEVEL_TO_PROMPT[2],
-        )
-
-        match output_format:
-            case OutputEnum.PLAIN:
-                prompt = (
-                    "Summarize the following text in professional plain text format.\n\n"
-                    "Make the output clear, polished, and easy to read.\n\n"
-                    "Use short paragraphs or simple bullet-style lines where appropriate, but do not use Markdown syntax or JSON.\n\n"
-                    f"Include a summary using no more than {max_sentences} sentences.\n\n"
-                    f"{detail_instruction}\n\n"
-                    f"{summary_instruction}.\n\n"
-                    "Put a double newline after each line or section for readable plain text spacing.\n\n"
-                    f"The output format must be {output_format.value} (plain text).\n\n"
-                    f"Text:\n\n{text.strip()}"
-                )
-                return prompt
-            case OutputEnum.MARKDOWN:
-                prompt = (
-                    "Summarize the following text in professional Markdown format.\n\n"
-                    "Make the output clear, polished, and easy to scan.\n\n"
-                    "Use proper Markdown headers and bullet points where appropriate.\n\n"
-                    f"Include a summary section using no more than {max_sentences} sentences.\n\n"
-                    f"{detail_instruction}\n\n"
-                    f"{summary_instruction}.\n\n"
-                    "Put a double newline after each line or section for readable Markdown spacing.\n\n"
-                    f"The output format must be {output_format.value} (Markdown).\n\n"
-                    f"Text:\n\n{text.strip()}"
-                )
-                return prompt
-            case OutputEnum.JSON:
-                prompt = (
-                    "Summarize the following text in JSON format.\n\n"
-                    "Return only valid JSON with no surrounding commentary, no markdown fences, and no additional text.\n\n"
-                    f"The output format must be {output_format.value} (JSON).\n\n"
-                    "JSON rules:\n\n"
-                    "1) Use snake_case for all keys.\n\n"
-                    "2) Include document_title if applicable.\n\n"
-                    "3) Include short_description with exactly 3 sentences.\n\n"
-                    "4) Include short_summary with 2 to 3 sentences.\n\n"
-                    f"5) Include full_summary with a maximum of {max_sentences} sentences, as provided by the user.\n\n"
-                    f"6) {detail_instruction}\n\n"
-                    f"7) {summary_instruction}.\n\n"
-                    "8) Keep values concise, factual, and based only on the provided text.\n\n"
-                    "9) If a title is not available, use an empty string for document_title.\n\n"
-                    "Use this JSON structure:\n\n"
-                    "{\n"
-                    '  "document_title": "",\n'
-                    '  "short_description": "",\n'
-                    '  "short_summary": "",\n'
-                    '  "full_summary": ""\n'
-                    "}\n\n"
-                    f"Text:\n\n{text.strip()}"
-                )
-                return prompt
-            # Despite case _ beint unreachable, we still need this code, since
-            # it will help to catch a bug (or evade it) when we pass wrong argument to a caller,
-            # therefore, this will be evaluated as a plain text.
-            case _:
-                print(
-                    f"Unknown output format: {output_format} passed. Type: {type(output_format)}"
-                )
-                prompt = (
-                    "Summarize the following text in professional plain text format.\n\n"
-                    "Make the output clear, polished, and easy to read.\n\n"
-                    "Use short paragraphs or simple bullet-style lines where appropriate, but do not use Markdown syntax or JSON.\n\n"
-                    f"Include a summary using no more than {max_sentences} sentences.\n\n"
-                    f"{detail_instruction}\n\n"
-                    f"{summary_instruction}.\n\n"
-                    "Put a double newline after each line or section for readable plain text spacing.\n\n"
-                    "If the requested format is unknown, default to clean plain text output.\n\n"
-                    f"Text:\n\n{text.strip()}"
-                )
-                return prompt
 
     def _generate_content_with_retry(self, prompt: str) -> str:
         last_error = None
