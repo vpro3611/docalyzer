@@ -8,7 +8,9 @@ import time
 import types
 from pathlib import Path
 
+from docalyzer.description_level import DESCRIPTION_LEVEL_TO_PROMPT
 from docalyzer.outupt_enum import OutputEnum
+from docalyzer.summary_level import SUMMARY_LEVEL_TO_PROMPT
 
 DEFAULT_MODEL: str = "gemini-2.5-flash"
 
@@ -121,8 +123,16 @@ class GeminiClient:
         max_sentences: int = 5,
         output_format: OutputEnum = OutputEnum.PLAIN,
         tofile_path: Path | None = None,
+        description_level: int = 2,
+        summary_level: int = 2,
     ) -> str:
-        prompt: str = self._format_request(text, output_format, max_sentences)
+        prompt: str = self._format_request(
+            text,
+            output_format,
+            max_sentences,
+            description_level,
+            summary_level,
+        )
         content: str = self._generate_content_with_retry(prompt)
         if tofile_path is not None:
             self._write_to_file(content, tofile_path, output_format)
@@ -165,8 +175,22 @@ class GeminiClient:
         return json.dumps(parsed_json, indent=2, ensure_ascii=False) + "\n"
 
     def _format_request(
-        self, text: str, output_format: OutputEnum, max_sentences: int
+        self,
+        text: str,
+        output_format: OutputEnum,
+        max_sentences: int,
+        description_level: int = 2,
+        summary_level: int = 2,
     ) -> str:
+        detail_instruction = DESCRIPTION_LEVEL_TO_PROMPT.get(
+            description_level,
+            DESCRIPTION_LEVEL_TO_PROMPT[2],
+        )
+        summary_instruction = SUMMARY_LEVEL_TO_PROMPT.get(
+            summary_level,
+            SUMMARY_LEVEL_TO_PROMPT[2],
+        )
+
         match output_format:
             case OutputEnum.PLAIN:
                 prompt = (
@@ -174,6 +198,8 @@ class GeminiClient:
                     "Make the output clear, polished, and easy to read.\n\n"
                     "Use short paragraphs or simple bullet-style lines where appropriate, but do not use Markdown syntax or JSON.\n\n"
                     f"Include a summary using no more than {max_sentences} sentences.\n\n"
+                    f"{detail_instruction}\n\n"
+                    f"{summary_instruction}.\n\n"
                     "Put a double newline after each line or section for readable plain text spacing.\n\n"
                     f"The output format must be {output_format.value} (plain text).\n\n"
                     f"Text:\n\n{text.strip()}"
@@ -185,6 +211,8 @@ class GeminiClient:
                     "Make the output clear, polished, and easy to scan.\n\n"
                     "Use proper Markdown headers and bullet points where appropriate.\n\n"
                     f"Include a summary section using no more than {max_sentences} sentences.\n\n"
+                    f"{detail_instruction}\n\n"
+                    f"{summary_instruction}.\n\n"
                     "Put a double newline after each line or section for readable Markdown spacing.\n\n"
                     f"The output format must be {output_format.value} (Markdown).\n\n"
                     f"Text:\n\n{text.strip()}"
@@ -201,8 +229,10 @@ class GeminiClient:
                     "3) Include short_description with exactly 3 sentences.\n\n"
                     "4) Include short_summary with 2 to 3 sentences.\n\n"
                     f"5) Include full_summary with a maximum of {max_sentences} sentences, as provided by the user.\n\n"
-                    "6) Keep values concise, factual, and based only on the provided text.\n\n"
-                    "7) If a title is not available, use an empty string for document_title.\n\n"
+                    f"6) {detail_instruction}\n\n"
+                    f"7) {summary_instruction}.\n\n"
+                    "8) Keep values concise, factual, and based only on the provided text.\n\n"
+                    "9) If a title is not available, use an empty string for document_title.\n\n"
                     "Use this JSON structure:\n\n"
                     "{\n"
                     '  "document_title": "",\n'
@@ -225,6 +255,8 @@ class GeminiClient:
                     "Make the output clear, polished, and easy to read.\n\n"
                     "Use short paragraphs or simple bullet-style lines where appropriate, but do not use Markdown syntax or JSON.\n\n"
                     f"Include a summary using no more than {max_sentences} sentences.\n\n"
+                    f"{detail_instruction}\n\n"
+                    f"{summary_instruction}.\n\n"
                     "Put a double newline after each line or section for readable plain text spacing.\n\n"
                     "If the requested format is unknown, default to clean plain text output.\n\n"
                     f"Text:\n\n{text.strip()}"

@@ -226,6 +226,36 @@ class MainCLITest(unittest.TestCase):
             self.assertIn("--tofile requires flag --gemini", result.stdout)
             self.assertNotIn("--output requires flag --gemini", result.stdout)
 
+    def test_levels_with_gemini_do_not_raise_type_error(self) -> None:
+        with tempfile.NamedTemporaryFile(
+            suffix=".md", mode="w", encoding="utf-8"
+        ) as tmpfile:
+            tmpfile.write("Sentence one. Sentence two. Sentence three.")
+            tmpfile.flush()
+
+            result = subprocess.run(
+                [
+                    "python3",
+                    str(SCRIPT),
+                    tmpfile.name,
+                    "--gemini",
+                    "--desc_level",
+                    "2",
+                    "--sum_level",
+                    "3",
+                ],
+                capture_output=True,
+                text=True,
+            )
+
+            self.assertNotIn("TypeError", result.stderr)
+            self.assertNotIn(
+                "unexpected keyword argument 'description_level'", result.stderr
+            )
+            self.assertNotIn(
+                "unexpected keyword argument 'summary_level'", result.stderr
+            )
+
     def test_invalid_output_value(self) -> None:
         with tempfile.NamedTemporaryFile(suffix=".md") as tmpfile:
             result = subprocess.run(

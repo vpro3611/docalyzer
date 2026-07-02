@@ -42,6 +42,8 @@ class SummarizerTest(unittest.TestCase):
             max_sentences=5,
             output_format=OutputEnum.PLAIN,
             tofile_path=None,
+            description_level=2,
+            summary_level=2,
         )
 
     @mock.patch("docalyzer.gemini_client.GeminiClient.from_env")
@@ -60,6 +62,8 @@ class SummarizerTest(unittest.TestCase):
             max_sentences=5,
             output_format=OutputEnum.PLAIN,
             tofile_path=None,
+            description_level=2,
+            summary_level=2,
         )
 
     @mock.patch("docalyzer.gemini_client.GeminiClient.from_env")
@@ -81,6 +85,8 @@ class SummarizerTest(unittest.TestCase):
             max_sentences=5,
             output_format=OutputEnum.MARKDOWN,
             tofile_path=None,
+            description_level=2,
+            summary_level=2,
         )
 
     @mock.patch("docalyzer.gemini_client.GeminiClient.from_env")
@@ -106,6 +112,54 @@ class SummarizerTest(unittest.TestCase):
         self.assertEqual(summary, "Gemini summarization failed: rate limited")
 
     @mock.patch("docalyzer.gemini_client.GeminiClient.from_env")
+    def test_summarize_long_text_passes_description_level_to_gemini(
+        self, mock_from_env: mock.Mock
+    ) -> None:
+        mock_client = mock.Mock()
+        mock_client.summarize.return_value = "AI summary"
+        mock_from_env.return_value = mock_client
+
+        summary = summarize_long_text(
+            "Long text",
+            use_gemini=True,
+            description_level=3,
+        )
+
+        self.assertEqual(summary, "AI summary")
+        mock_client.summarize.assert_called_once_with(
+            "Long text",
+            max_sentences=5,
+            output_format=OutputEnum.PLAIN,
+            tofile_path=None,
+            description_level=3,
+            summary_level=2,
+        )
+
+    @mock.patch("docalyzer.gemini_client.GeminiClient.from_env")
+    def test_summarize_long_text_passes_summary_level_to_gemini(
+        self, mock_from_env: mock.Mock
+    ) -> None:
+        mock_client = mock.Mock()
+        mock_client.summarize.return_value = "AI summary"
+        mock_from_env.return_value = mock_client
+
+        summary = summarize_long_text(
+            "Long text",
+            use_gemini=True,
+            summary_level=3,
+        )
+
+        self.assertEqual(summary, "AI summary")
+        mock_client.summarize.assert_called_once_with(
+            "Long text",
+            max_sentences=5,
+            output_format=OutputEnum.PLAIN,
+            tofile_path=None,
+            description_level=2,
+            summary_level=3,
+        )
+
+    @mock.patch("docalyzer.gemini_client.GeminiClient.from_env")
     def test_summarize_long_text_passes_tofile_path_to_gemini(
         self, mock_from_env: mock.Mock
     ) -> None:
@@ -126,6 +180,8 @@ class SummarizerTest(unittest.TestCase):
             max_sentences=5,
             output_format=OutputEnum.JSON,
             tofile_path=mock.sentinel.output_path,
+            description_level=2,
+            summary_level=2,
         )
 
 

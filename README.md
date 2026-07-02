@@ -10,7 +10,8 @@ Docalyzer is a Python CLI tool that intelligently summarizes documents and code 
 - **AI-powered summarization**: Optional Google Gemini API integration for intelligent summaries
 - **Local fallback**: Built-in chunking algorithm for offline summarization
 - **Production-ready**: Error handling with exponential backoff retries, comprehensive logging
-- **Configurable**: Customize Gemini model effort, summary length, and output format via CLI flags or environment variables
+- **Configurable**: Customize Gemini model effort, summary length, description depth, summary detail, and output format via CLI flags or environment variables
+- **Granular AI detail control**: Independently tune descriptive depth with `--desc_level` and summary richness with `--sum_level`
 - **Structured AI output**: Gemini summaries can be requested as plain text, Markdown, or JSON
 - **Save summaries to disk**: Gemini output can be written to a user-provided path with `--tofile`
 - **JSON cleanup on save**: Saved JSON output is normalized by stripping Markdown fences and pretty-printing valid JSON
@@ -81,6 +82,11 @@ docalyzer path/to/document.pdf --gemini --model high --sentences 7
 docalyzer path/to/document.pdf --gemini --output md
 ```
 
+**AI-powered summarization with detailed description and full summary output:**
+```bash
+docalyzer path/to/document.pdf --gemini --desc_level 3 --sum_level 3 --sentences 6
+```
+
 **AI-powered summarization with JSON output:**
 ```bash
 docalyzer path/to/document.pdf --gemini --output json --sentences 5
@@ -116,6 +122,8 @@ docalyzer <filepath> [OPTIONS]
 | `--sentences` | int | 5 | Maximum number of sentences in the Gemini summary (`1-250`, requires `--gemini`) |
 | `--gemini` | flag | False | Use Google Gemini API for summarization |
 | `--model` | `low \| mid \| high` | `mid` | Gemini effort level to use for AI summarization (requires `--gemini`) |
+| `--desc_level` | `1 \| 2 \| 3` | `2` | Controls how concise vs. in-depth the descriptive sections should be (requires `--gemini`) |
+| `--sum_level` | `1 \| 2 \| 3` | `2` | Controls how concise vs. full the summary should be while still respecting `--sentences` (requires `--gemini`) |
 | `--output` | `txt \| md \| json` | `txt` | Output format. `md` and `json` require `--gemini`; default `txt` is used otherwise |
 | `--tofile` | path | `None` | Save Gemini output to the provided file path (requires `--gemini`) |
 
@@ -149,6 +157,33 @@ When using `--gemini`, you can choose a higher or lower model effort depending o
 | `mid` | `gemini-2.5-flash` |
 | `high` | `gemini-2.5-pro` |
 
+### AI Detail Levels
+
+When using `--gemini`, you can separately control the descriptive depth and the overall summary richness:
+
+#### Description levels (`--desc_level`)
+
+| Level | Meaning |
+|-------|---------|
+| `1` | Brief description with minimal explanatory detail |
+| `2` | Detailed description with balanced explanation |
+| `3` | Very detailed, in-depth description |
+
+#### Summary levels (`--sum_level`)
+
+| Level | Meaning |
+|-------|---------|
+| `1` | Concise summary that stays compact within the sentence cap |
+| `2` | Detailed summary with balanced coverage within the sentence cap |
+| `3` | Full, richer summary that uses the available sentence budget more aggressively |
+
+**Notes**:
+- Both flags require `--gemini`
+- Both flags accept values from `1` to `3`
+- `--desc_level` controls descriptive/explanatory sections
+- `--sum_level` controls the density of the actual summary while still respecting `--sentences`
+- Local summarization ignores both flags
+
 ### Examples
 
 ```bash
@@ -166,6 +201,12 @@ docalyzer research.pdf --gemini --model high
 
 # Request Markdown output
 docalyzer README.md --gemini --output md
+
+# Ask for a brief description but a fuller summary
+docalyzer report.pdf --gemini --desc_level 1 --sum_level 3 --sentences 6
+
+# Ask for an in-depth description and a rich Markdown response
+docalyzer technical.md --gemini --desc_level 3 --sum_level 3 --output md --sentences 6
 
 # Request structured JSON output
 docalyzer report.pdf --gemini --output json --sentences 5
@@ -217,13 +258,20 @@ For output formatting and file saving, the effective behavior is:
 5. If `--tofile` has no extension, one is appended from the selected format
 6. Local summarization always returns plain text
 
+For Gemini detail controls, the effective behavior is:
+1. `--desc_level 1|2|3` selects description depth
+2. `--sum_level 1|2|3` selects summary richness
+3. Built-in defaults for both are `2`
+4. Both flags require `--gemini`
+5. `--sum_level` still respects the sentence cap from `--sentences`
+
 ### Local Summarization
 
 When not using `--gemini`, the tool chunks your document and processes it locally:
 - **Chunk size**: 2000 characters
 - **Chunks per summary**: 2 sentences each
 - **Final output**: Combined from all chunks
-- **CLI note**: `--sentences` and `--model` apply only to Gemini summarization; `--output md|json` and `--tofile` also require Gemini
+- **CLI note**: `--sentences`, `--model`, `--desc_level`, and `--sum_level` apply only to Gemini summarization; `--output md|json` and `--tofile` also require Gemini
 
 ##  Installation & Development
 
@@ -292,6 +340,7 @@ The test suite includes:
 - File loader tests for all 18+ formats
 - Gemini client error handling and retry logic
 - CLI argument parsing and validation
+- Description and summary level prompt generation and validation
 - Output format prompt generation and fallback behavior
 - File output behavior, including extension handling and JSON normalization
 - Integration tests for end-to-end workflows
