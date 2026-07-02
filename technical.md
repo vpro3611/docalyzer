@@ -31,10 +31,12 @@ graph TD
 
 1. **CLI Layer** (`main.py`): Argument parsing, user interface, orchestration
 2. **Summarization Layer** (`summarizer.py`): Algorithm selection, local vs. AI summarization
-3. **LLM Integration** (`gemini_client.py`): API abstraction, error handling, retry logic
+3. **LLM Integration** (`gemini_client.py`): API abstraction, prompt construction, error handling, retry logic
 4. **Model Selection** (`model_enum.py`): User-facing Gemini effort presets mapped to concrete models
-5. **Output Selection** (`outupt_enum.py`): User-facing Gemini output format selection
-6. **File Loading** (`file_loaders.py`): Multi-format document parsing
+5. **Description Level Selection** (`description_level.py`): User-facing description-depth presets mapped to prompt instructions
+6. **Summary Level Selection** (`summary_level.py`): User-facing summary-richness presets mapped to prompt instructions
+7. **Output Selection** (`outupt_enum.py`): User-facing Gemini output format selection
+8. **File Loading** (`file_loaders.py`): Multi-format document parsing
 
 ##  Module Design
 
@@ -55,6 +57,8 @@ def main() -> int:
 - `--sentences` (optional, default 5): Gemini summary length, valid only with `--gemini`
 - `--gemini` (optional flag): Use AI summarization
 - `--model` (optional, default `mid`): Gemini effort level (`low`, `mid`, `high`), valid only with `--gemini`
+- `--desc_level` (optional, default `2`): Description depth (`1`, `2`, `3`), valid only with `--gemini`
+- `--sum_level` (optional, default `2`): Summary richness (`1`, `2`, `3`), valid only with `--gemini`
 - `--output` (optional, default `txt`): Output format (`txt`, `md`, `json`); non-default Gemini formats require `--gemini`
 - `--tofile` (optional): Save Gemini output to a user-provided file path, valid only with `--gemini`
 
@@ -72,9 +76,13 @@ def main() -> int:
 **Validation rules**:
 - `--sentences` requires `--gemini`
 - `--model` requires `--gemini`
+- `--desc_level` requires `--gemini`
+- `--sum_level` requires `--gemini`
 - `--output md|json` requires `--gemini`
 - `--tofile` requires `--gemini`
 - `--sentences` must be between `1` and `250`
+- `--desc_level` must be between `1` and `3`
+- `--sum_level` must be between `1` and `3`
 
 ### 2. Summarizer Module (`src/docalyzer/summarizer.py`)
 
@@ -92,6 +100,8 @@ def summarize_long_text(
     use_gemini: bool = False,
     output_format: OutputEnum = OutputEnum.PLAIN,
     tofile_path: Path | None = None,
+    description_level: int = 2,
+    summary_level: int = 2,
 ) -> str:
     """Route to Gemini API or local chunking"""
 ```
@@ -109,18 +119,20 @@ def summarize_long_text(
 **Gemini Integration**:
 - Delegates to `GeminiClient` for API calls
 - Resolves user-facing effort levels through `MODEL_MAP`
-- Passes `output_format` and optional `tofile_path` through to the Gemini client
+- Passes `output_format`, optional `tofile_path`, `description_level`, and `summary_level` through to the Gemini client
 - Catches `GeminiAPIError` and `ValueError`
 - Returns error string instead of raising (graceful degradation)
 
-**Model and output selection flow**:
+**Model, detail, and output selection flow**:
 1. CLI parses `--model` into `ModelEnum`
-2. CLI parses `--output` into `OutputEnum`
-3. `summarize_long_text()` converts the selected model enum into a concrete Gemini model name
-4. `GeminiClient.from_env(model=...)` receives the resolved model
-5. `GeminiClient.summarize(..., output_format=..., tofile_path=...)` receives the selected output format and optional save path
-6. If no CLI effort is provided, the summarizer falls back to `DEFAULT_MODEL`
-7. If no CLI output is provided, the system defaults to `OutputEnum.PLAIN`
+2. CLI validates `--desc_level` and `--sum_level` as integer values from `1` to `3`
+3. CLI parses `--output` into `OutputEnum`
+4. `summarize_long_text()` converts the selected model enum into a concrete Gemini model name
+5. `GeminiClient.from_env(model=...)` receives the resolved model
+6. `GeminiClient.summarize(..., output_format=..., tofile_path=..., description_level=..., summary_level=...)` receives the selected output format, optional save path, and prompt-detail controls
+7. If no CLI effort is provided, the summarizer falls back to `DEFAULT_MODEL`
+8. If no CLI output is provided, the system defaults to `OutputEnum.PLAIN`
+9. If no CLI detail level is provided, both `description_level` and `summary_level` default to `2`
 
 ### 3. Model Selection Module (`src/docalyzer/model_enum.py`)
 
@@ -158,7 +170,39 @@ class OutputEnum(StrEnum):
 - Pros: Clear contract, easy validation, less stringly-typed branching
 - Cons: Adds one more enum module to maintain
 
-### 5. Gemini Client Module (`src/docalyzer/gemini_client.py`)
+### 5. Description Level Module (`src/docalyzer/description_level.py`)
+
+**Responsibility**: Define user-facing presets for how descriptive and explanatory Gemini output should be.
+
+```python
+DESCRIPTION_LEVEL_TO_PROMPT = {
+    1: "Provide a concise description of the given text.",
+    2: "Provide a detailed description of the given text.",
+    3: "Provide an in-depth and very detailed description of the given text.",
+}
+```
+
+**Design Decision**: Keep descriptive-depth prompt wording in a dedicated mapping module rather than hardcoding it in the client.
+- Pros: Easier tuning, clearer tests, less prompt duplication
+- Cons: One more small mapping file to maintain
+
+### 6. Summary Level Module (`src/docalyzer/summary_level.py`)
+
+**Responsibility**: Define user-facing presets for how dense and full the summary should be while still respecting the sentence cap.
+
+```python
+SUMMARY_LEVEL_TO_PROMPT = {
+    1: "The summary should be concise, but still fit into the sentences cap",
+    2: "The summary should be detailed, but still fit into the sentences cap",
+    3: "The summary should be very detailed and in-depth, but still fit into the sentences cap",
+}
+```
+
+**Design Decision**: Separate summary-richness controls from descriptive-depth controls so users can independently tune the two concerns.
+- Pros: More expressive CLI, clearer prompt behavior, better testability
+- Cons: Slightly more prompt complexity
+
+### 7. Gemini Client Module (`src/docalyzer/gemini_client.py`)
 
 **Responsibility**: API abstraction, error handling, retry logic
 
@@ -172,7 +216,7 @@ class GeminiClient:
         max_retries: int = 3,
         initial_retry_delay: float = 1.0
     )
-    
+
     @classmethod
     def from_env(
         cls,
@@ -180,24 +224,29 @@ class GeminiClient:
         env_path: str | Path | None = None,
         max_retries: int = 3
     ) -> "GeminiClient"
-    
+
     def summarize(
         self,
         text: str,
         max_sentences: int = 5,
         output_format: OutputEnum = OutputEnum.PLAIN,
         tofile_path: Path | None = None,
+        description_level: int = 2,
+        summary_level: int = 2,
     ) -> str
 ```
 
 **Key Features**:
 
-#### Output-aware prompt generation
+#### Output-aware and detail-aware prompt generation
 - Builds different Gemini prompts for `txt`, `md`, and `json`
+- Applies `description_level` instructions from `DESCRIPTION_LEVEL_TO_PROMPT`
+- Applies `summary_level` instructions from `SUMMARY_LEVEL_TO_PROMPT`
 - Plain text prompts request readable spacing and non-Markdown output
 - Markdown prompts request headers, bullet points, and a professional structure
 - JSON prompts request a strict response shape with snake_case keys
 - Unknown output values fall back defensively to plain text prompt instructions
+- `summary_level` influences how much of the sentence budget Gemini should use, but does not override `max_sentences`
 
 #### File output and normalization
 - When `tofile_path` is provided, Gemini output is written to disk after generation
@@ -223,12 +272,12 @@ graph TD
     B -->|Validation: 400, 401| C["GeminiAPIError<br/>No Retry"]
     B -->|Transient: 5xx, timeout| D["genai_errors<br/>Retry with Backoff"]
     B -->|Success: 200| E["Return Summary"]
-    
+
     C -->|Immediate failure| F["User Error Message"]
     D -->|Exponential backoff| G["Retry Loop<br/>Max 3x"]
     G -->|Success| E
     G -->|All failed| H["Return Error"]
-    
+
     style C fill:#ffcdd2
     style D fill:#fff9c4
     style E fill:#c8e6c9
@@ -266,6 +315,8 @@ Requested rules:
 - `short_description` should contain 3 sentences
 - `short_summary` should contain 2-3 sentences
 - `full_summary` should contain at most the user-provided sentence limit
+- `description_level` changes how explanatory the descriptive fields should be
+- `summary_level` changes how dense and full `full_summary` should be within the sentence cap
 
 When saving JSON to disk, the implementation also normalizes the model response to improve usability in editors and diffs.
 
@@ -275,12 +326,13 @@ When saving JSON to disk, the implementation also normalizes the model response 
 |----------|-----------|----------|
 | Class abstraction | Future model flexibility | Extra complexity |
 | Runtime model override | CLI effort selection should beat `.env` defaults | Slightly more config flow to reason about |
+| Separate description and summary controls | Lets users tune explanation depth independently from summary density | Slightly more prompt complexity |
 | Custom error handling | Distinguish retry-able errors | More code |
 | Exponential backoff | Reduce API server load | Longer wait on failures |
 | selective retries | Don't mask validation bugs | Must classify errors |
 | Logging integration | Production debugging | Performance overhead (minimal) |
 
-### 6. File Loaders Module (`src/docalyzer/file_loaders.py`)
+### 8. File Loaders Module (`src/docalyzer/file_loaders.py`)
 
 **Responsibility**: Multi-format document parsing
 
@@ -318,13 +370,14 @@ graph LR
     A["User Input<br/>CLI Args"] -->|Validation| B["Parse & Validate"]
     B -->|File Path| C["Load File<br/>Detect Format"]
     C -->|Raw Text| D["Summarize?"]
-    
+
     D -->|use_gemini=False| E["Local Algorithm<br/>Chunking"]
     D -->|use_gemini=True| E1["Resolve Model Effort<br/>low/mid/high"]
-    E1 --> F["Create Gemini Client<br/>from_env(model=...)"]
-    
+    E1 --> E2["Resolve Detail Controls<br/>desc_level/sum_level"]
+    E2 --> F["Create Gemini Client<br/>from_env(model=...)"]
+
     F -->|Config| G["Load .env<br/>& Environment"]
-    G -->|API Key + Model| H["Generate Prompt<br/>& Call API"]
+    G -->|API Key + Model| H["Generate Prompt<br/>with output + detail controls"]
     H -->|Retry Logic| I["Exponential Backoff"]
     I -->|Success| J["Parse Response"]
     I -->|Max Retries| K["Error Message"]
@@ -353,8 +406,9 @@ tests/
 **Current coverage areas**:
 - File loader behavior for core text-based formats and error paths
 - Gemini client environment loading, retry logic, and failure handling
-- CLI argument validation for `--gemini`, `--sentences`, `--model`, `--output`, and `--tofile`
+- CLI argument validation for `--gemini`, `--sentences`, `--model`, `--desc_level`, `--sum_level`, `--output`, and `--tofile`
 - Model effort mapping stability
+- Description-level and summary-level prompt mapping stability
 - Summarizer routing for local vs. Gemini execution
 - File output behavior, including extension validation and JSON normalization
 
