@@ -61,6 +61,11 @@ class TestGeminiClient(unittest.TestCase):
         self.assertIn("professional plain text format", prompt)
         self.assertIn("do not use Markdown syntax or JSON", prompt)
         self.assertIn("no more than 2 sentences", prompt)
+        self.assertIn("Provide a detailed description of the given text.", prompt)
+        self.assertIn(
+            "The summary should be detailed, but still fit into the sentences cap.",
+            prompt,
+        )
         self.assertIn("The output format must be txt", prompt)
         self.assertIn("Text:\n\nThis is a long text.", prompt)
 
@@ -74,6 +79,11 @@ class TestGeminiClient(unittest.TestCase):
         self.assertIn("professional Markdown format", prompt)
         self.assertIn("proper Markdown headers and bullet points", prompt)
         self.assertIn("no more than 3 sentences", prompt)
+        self.assertIn("Provide a detailed description of the given text.", prompt)
+        self.assertIn(
+            "The summary should be detailed, but still fit into the sentences cap.",
+            prompt,
+        )
         self.assertIn("The output format must be md", prompt)
 
     def test_format_request_json_includes_json_schema_rules(self) -> None:
@@ -90,6 +100,11 @@ class TestGeminiClient(unittest.TestCase):
         self.assertIn("short_summary", prompt)
         self.assertIn("full_summary", prompt)
         self.assertIn("maximum of 4 sentences", prompt)
+        self.assertIn("Provide a detailed description of the given text.", prompt)
+        self.assertIn(
+            "The summary should be detailed, but still fit into the sentences cap.",
+            prompt,
+        )
 
     def test_format_request_unknown_output_falls_back_to_plain_text(self) -> None:
         client = GeminiClient(api_key=self.api_key)
@@ -99,7 +114,44 @@ class TestGeminiClient(unittest.TestCase):
 
         self.assertIn("professional plain text format", prompt)
         self.assertIn("If the requested format is unknown", prompt)
+        self.assertIn("Provide a detailed description of the given text.", prompt)
+        self.assertIn(
+            "The summary should be detailed, but still fit into the sentences cap.",
+            prompt,
+        )
         mock_print.assert_called_once()
+
+    def test_format_request_uses_requested_description_level(self) -> None:
+        client = GeminiClient(api_key=self.api_key)
+
+        prompt = client._format_request(
+            "This is a long text.",
+            OutputEnum.PLAIN,
+            max_sentences=2,
+            description_level=1,
+        )
+
+        self.assertIn("Provide a concise description of the given text.", prompt)
+        self.assertNotIn("Provide a detailed description of the given text.", prompt)
+
+    def test_format_request_uses_requested_summary_level(self) -> None:
+        client = GeminiClient(api_key=self.api_key)
+
+        prompt = client._format_request(
+            "This is a long text.",
+            OutputEnum.PLAIN,
+            max_sentences=2,
+            summary_level=1,
+        )
+
+        self.assertIn(
+            "The summary should be concise, but still fit into the sentences cap.",
+            prompt,
+        )
+        self.assertNotIn(
+            "The summary should be detailed, but still fit into the sentences cap.",
+            prompt,
+        )
 
     @mock.patch("docalyzer.gemini_client.genai.Client")
     def test_summarize_raises_on_missing_text(
