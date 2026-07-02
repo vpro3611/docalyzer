@@ -502,4 +502,4 @@ For a Phase 1 release, Docalyzer is distributed as a standard Python CLI package
 
 ---
 
-**Version**: 1.0.0 | **Last Updated**: 2026-07-02
+**Version**: 1.1.0 | **Last Updated**: 2026-07-02
