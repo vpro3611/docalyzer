@@ -12,6 +12,7 @@ if __package__ in (None, ""):
 from docalyzer.file_loaders import SUPPORTED_EXTENSIONS, FileLoadError, load_file
 from docalyzer.model_enum import ModelEnum
 from docalyzer.outupt_enum import OutputEnum
+from docalyzer.provider_enum import ProviderEnum
 from docalyzer.summarizer import shorten_title, summarize_long_text
 
 SENTENCES_MIN: int = 1
@@ -37,21 +38,27 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--provider",
+        type=ProviderEnum,
+        default=None,
+        help="AI provider to use. Available: gemini, openai",
+    )
+    parser.add_argument(
+        "--gemini",
+        action="store_true",
+        help="Deprecated alias for --provider gemini.",
+    )
+    parser.add_argument(
         "--sentences",
         type=int,
         default=None,
         help="Maximum number of sentences in the summary.",
     )
     parser.add_argument(
-        "--gemini",
-        action="store_true",
-        help="Use Gemini LLM API for summarization.",
-    )
-    parser.add_argument(
         "--model",
         type=ModelEnum,
         default=None,
-        help="Define model which will be used for summary. Available: low, mid, high",
+        help="Define model effort which will be used for AI summary. Available: low, mid, high",
     )
     parser.add_argument(
         "--output",
@@ -68,16 +75,29 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--desc_level",
         type=int,
-        default=2,
+        default=None,
         help="Description level: 1 - brief, 2 - detailed (default), 3 - very detailed (full).",
     )
     parser.add_argument(
         "--sum_level",
         type=int,
-        default=2,
+        default=None,
         help="Summary level: 1 - brief, 2 - detailed (default), 3 - very detailed (full).",
     )
     return parser
+
+
+def _resolve_provider(
+    provider: ProviderEnum | None,
+    use_gemini_alias: bool,
+) -> ProviderEnum | None:
+    if not use_gemini_alias:
+        return provider
+
+    if provider is not None and provider is not ProviderEnum.GEMINI:
+        raise ValueError("--gemini cannot be combined with a non-Gemini provider")
+
+    return ProviderEnum.GEMINI
 
 
 def main() -> int:
@@ -90,11 +110,19 @@ def main() -> int:
         print(f"File not found: {path}")
         return 1
 
-    if args.sentences is not None and not args.gemini:
-        print("--sentences requires flag --gemini and only works with AI summarizer")
+    try:
+        provider = _resolve_provider(args.provider, args.gemini)
+    except ValueError as error:
+        print(error)
         return 1
 
-    if args.sentences is not None and args.gemini:
+    use_ai = provider is not None
+
+    if args.sentences is not None and not use_ai:
+        print("--sentences requires an AI provider and only works with AI summarizer")
+        return 1
+
+    if args.sentences is not None:
         if args.sentences < SENTENCES_MIN or args.sentences > SENTENCES_MAX:
             print(
                 f"Sentences cannot be less than {SENTENCES_MIN} and more than {SENTENCES_MAX}! Current amount: {args.sentences}"
@@ -102,61 +130,60 @@ def main() -> int:
             return 1
         max_sentences = args.sentences
 
-    if args.model is not None and not args.gemini:
-        print("--model requires flag --gemini and only works with AI summarizer")
+    if args.model is not None and not use_ai:
+        print("--model requires an AI provider and only works with AI summarizer")
         return 1
 
-    if args.tofile is not None and not args.gemini:
-        print("--tofile requires flag --gemini and only works with AI summarizer")
+    if args.tofile is not None and not use_ai:
+        print("--tofile requires an AI provider and only works with AI summarizer")
         return 1
 
-    if args.output != OutputEnum.PLAIN and not args.gemini:
-        print("--output requires flag --gemini and only works with AI summarizer")
+    if args.output != OutputEnum.PLAIN and not use_ai:
+        print("--output requires an AI provider and only works with AI summarizer")
         return 1
 
-    if args.desc_level and not args.gemini:
-        print("--desc_level requires flag --gemini and only works with AI summarizer")
+    if args.desc_level is not None and not use_ai:
+        print("--desc_level requires an AI provider and only works with AI summarizer")
         return 1
 
-    if (
-        args.desc_level < DESCRIPTION_LEVEL_MIN
-        or args.desc_level > DESCRIPTION_LEVEL_MAX
+    if args.sum_level is not None and not use_ai:
+        print("--sum_level requires an AI provider and only works with AI summarizer")
+        return 1
+
+    description_level: int = (
+        args.desc_level if args.desc_level is not None else DESCRIPTION_LEVEL_MIN + 1
+    )
+    summary_level: int = (
+        args.sum_level if args.sum_level is not None else SUMMARY_LEVEL_MIN + 1
+    )
+
+    if use_ai and (
+        description_level < DESCRIPTION_LEVEL_MIN
+        or description_level > DESCRIPTION_LEVEL_MAX
     ):
         print(
             f"Description level must be between {DESCRIPTION_LEVEL_MIN} and {DESCRIPTION_LEVEL_MAX}. "
-            f"Got: {args.desc_level}"
+            f"Got: {description_level}"
         )
         return 1
 
-    if args.sum_level and not args.gemini:
-        print("--sum_level requires flag --gemini and only works with AI summarizer")
-        return 1
-
-    if args.sum_level < SUMMARY_LEVEL_MIN or args.sum_level > SUMMARY_LEVEL_MAX:
+    if use_ai and (
+        summary_level < SUMMARY_LEVEL_MIN or summary_level > SUMMARY_LEVEL_MAX
+    ):
         print(
             f"Summary level must be between {SUMMARY_LEVEL_MIN} and {SUMMARY_LEVEL_MAX}. "
-            f"Got: {args.sum_level}"
+            f"Got: {summary_level}"
         )
         return 1
 
     tofile_path: Path | None = args.tofile if args.tofile is not None else None
-
     output: OutputEnum = args.output
-
-    model: ModelEnum | None = None
-
-    description_level: int = args.desc_level
-
-    summary_level: int = args.sum_level
-
-    if args.model is None:
-        model = ModelEnum.MID
-    else:
-        model = args.model
+    model: ModelEnum = args.model if args.model is not None else ModelEnum.MID
 
     print(f"Target: {path}")
 
-    if args.gemini:
+    if use_ai:
+        print(f"AI provider: {provider}")
         print(f"Max sentences output: {max_sentences}")
         print(f"Model effort: {model}")
         print(f"Output format: {output}")
@@ -184,6 +211,7 @@ def main() -> int:
         raw_text,
         model_kind=model,
         max_sentences=max_sentences,
+        provider=provider,
         use_gemini=args.gemini,
         output_format=output,
         tofile_path=tofile_path,
