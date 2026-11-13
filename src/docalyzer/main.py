@@ -116,7 +116,7 @@ def main() -> int:
 
     if ping is not None:
         status: bool = True
-        print(f"Model status is: {'online' if status else 'offline'}")
+        print(f"Model {} status is: {'online' if status else 'offline'}")
         return 0;
 
     if not path.exists():
