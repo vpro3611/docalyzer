@@ -112,6 +112,12 @@ def main() -> int:
     args = parser.parse_args()
     path = args.path
     max_sentences: int = 5
+    ping: ModelEnum | None = args.ping
+
+    if ping is not None:
+        status: bool = True
+        print(f"Model status is: {'online' if status else 'offline'}")
+        return 0;
 
     if not path.exists():
         print(f"File not found: {path}")
@@ -186,7 +192,7 @@ def main() -> int:
     tofile_path: Path | None = args.tofile if args.tofile is not None else None
     output: OutputEnum = args.output
     model: ModelEnum = args.model if args.model is not None else ModelEnum.MID
-    ping: ModelEnum | None = args.ping
+
 
     print(f"Target: {path}")
 
