@@ -84,6 +84,13 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="Summary level: 1 - brief, 2 - detailed (default), 3 - very detailed (full).",
     )
+    parser.add_argument(
+        "--ping",
+        type=ProviderEnum,
+        default=None,
+        help="Enables the ping command, allowing you to ping a provider on your choice, whether it is available or not."
+
+    )
     return parser
 
 
@@ -179,6 +186,7 @@ def main() -> int:
     tofile_path: Path | None = args.tofile if args.tofile is not None else None
     output: OutputEnum = args.output
     model: ModelEnum = args.model if args.model is not None else ModelEnum.MID
+    ping: ModelEnum | None = args.ping
 
     print(f"Target: {path}")
 
